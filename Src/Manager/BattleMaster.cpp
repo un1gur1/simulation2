@@ -24,8 +24,8 @@ namespace App {
     }
 
     void BattleMaster::Init() {
-        m_player = std::make_unique<Player>(IntVector2{ 1, 1 }, m_mapGrid.GetCellCenter(1, 1), 5, 3, 5);
-        m_enemy = std::make_unique<Enemy>(IntVector2{ 5, 5 }, m_mapGrid.GetCellCenter(5, 5), 7, 1, 5);
+        m_player = std::make_unique<Player>(IntVector2{ 1, 1 }, m_mapGrid.GetCellCenter(1, 1), 5, 5, 5);
+        m_enemy = std::make_unique<Enemy>(IntVector2{ 5, 5 }, m_mapGrid.GetCellCenter(5, 5), 7, 5, 5);
         m_currentPhase = Phase::PlayerTurn;
         m_isPlayerSelected = false;
 
@@ -367,9 +367,9 @@ namespace App {
         SetFontSize(32); DrawFormatString(sbX + 40, py, GetColor(100, 200, 255), "■ プレイヤー (自分)");
         if (m_player) {
             SetFontSize(24);
-            DrawFormatString(sbX + 40, py + 50, GetColor(255, 255, 255), "数値: %2d", m_player->GetNumber());
+            DrawFormatString(sbX + 40, py + 50, GetColor(255, 255, 255), "体力: %2d", m_player->GetNumber());
             DrawFormatString(sbX + 40, py + 90, GetColor(255, 255, 255), "記号: [ %c ]", m_player->GetOp());
-            DrawFormatString(sbX + 40, py + 130, GetColor(255, 255, 0), "命 : %d / %d", m_player->GetStocks(), m_player->GetMaxStocks());
+            DrawFormatString(sbX + 40, py + 130, GetColor(255, 255, 0), "残機 : %d / %d", m_player->GetStocks(), m_player->GetMaxStocks());
             DrawBox(sbX + 200, py + 40, sbX + 260, py + 80, GetColor(50, 80, 120), TRUE); DrawFormatString(sbX + 210, py + 45, GetColor(255, 255, 255), "数+");
             DrawBox(sbX + 270, py + 40, sbX + 330, py + 80, GetColor(50, 80, 120), TRUE); DrawFormatString(sbX + 280, py + 45, GetColor(255, 255, 255), "数-");
             DrawBox(sbX + 340, py + 40, sbX + 400, py + 80, GetColor(50, 120, 80), TRUE); DrawFormatString(sbX + 345, py + 45, GetColor(255, 255, 255), "記号");
@@ -382,9 +382,9 @@ namespace App {
         SetFontSize(32); DrawFormatString(ex, py, GetColor(255, 100, 100), "■ ターゲット (敵)");
         if (m_enemy) {
             SetFontSize(24);
-            DrawFormatString(ex, py + 50, GetColor(255, 255, 255), "数値: %2d", m_enemy->GetNumber());
+            DrawFormatString(ex, py + 50, GetColor(255, 255, 255), "体力: %2d", m_enemy->GetNumber());
             DrawFormatString(ex, py + 90, GetColor(255, 255, 255), "記号: [ %c ]", m_enemy->GetOp());
-            DrawFormatString(ex, py + 130, GetColor(255, 100, 100), "命 : %d", m_enemy->GetStocks());
+            DrawFormatString(ex, py + 130, GetColor(255, 100, 100), "残機 : %d / %d", m_enemy->GetStocks(), m_enemy->GetMaxStocks());
             DrawBox(ex + 160, py + 40, ex + 220, py + 80, GetColor(50, 80, 120), TRUE); DrawFormatString(ex + 170, py + 45, GetColor(255, 255, 255), "数+");
             DrawBox(ex + 230, py + 40, ex + 290, py + 80, GetColor(50, 80, 120), TRUE); DrawFormatString(ex + 240, py + 45, GetColor(255, 255, 255), "数-");
             DrawBox(ex + 300, py + 40, ex + 360, py + 80, GetColor(50, 120, 80), TRUE); DrawFormatString(ex + 305, py + 45, GetColor(255, 255, 255), "記号");
