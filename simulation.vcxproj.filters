@@ -1,0 +1,114 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Src">
+      <UniqueIdentifier>{cbb0faf8-93aa-4e32-9764-98e19a891853}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Src\Scene">
+      <UniqueIdentifier>{cc4760e2-ed58-4462-95e8-870bc847d67a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Src\Input">
+      <UniqueIdentifier>{7c0131f7-460b-4008-a837-59c2bb967e4a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Src\Common">
+      <UniqueIdentifier>{45688ffb-9810-48ef-9be6-acd7674c184c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Src\Object">
+      <UniqueIdentifier>{777faeb2-2137-40d5-b3e0-767eca02d0b7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Src\Manager">
+      <UniqueIdentifier>{a952a489-c036-4ef1-bca1-0ba18b519c75}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Src\Object\Unit">
+      <UniqueIdentifier>{34003c91-e5f9-4de7-b4c2-d4fc20277ad1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Src\Object\Unit\Player">
+      <UniqueIdentifier>{4ddfebaf-6034-47ce-bde1-c361c0a77ea6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Src\Object\Unit\Enemy">
+      <UniqueIdentifier>{e9094fba-2fe9-4a6e-a331-664386ae1709}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Src\Object\Unit\Map">
+      <UniqueIdentifier>{b8c3266a-f422-464f-a64f-1912eff586b8}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Src\Application.cpp">
+      <Filter>Src</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Main.cpp">
+      <Filter>Src</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Scene\SceneBase.cpp">
+      <Filter>Src\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Scene\SceneManager.cpp">
+      <Filter>Src\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Scene\GameScene.cpp">
+      <Filter>Src\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Input\InputManager.cpp">
+      <Filter>Src\Input</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Common\Vector2.cpp">
+      <Filter>Src\Common</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Manager\BattleMaster.cpp">
+      <Filter>Src\Manager</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Object\Unit\UnitBase.cpp">
+      <Filter>Src\Object\Unit</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Object\Unit\Enemy\Enemy.cpp">
+      <Filter>Src\Object\Unit\Enemy</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Object\Unit\Player\Player.cpp">
+      <Filter>Src\Object\Unit\Player</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Object\Map\MapGrid.cpp">
+      <Filter>Src\Object\Unit\Map</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Scene\TitleScene.cpp">
+      <Filter>Src\Scene</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Src\Application.h">
+      <Filter>Src</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Scene\SceneBase.h">
+      <Filter>Src\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Scene\SceneManager.h">
+      <Filter>Src\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Scene\GameScene.h">
+      <Filter>Src\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Input\InputManager.h">
+      <Filter>Src\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Common\Vector2.h">
+      <Filter>Src\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Manager\BattleMaster.h">
+      <Filter>Src\Manager</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Object\Unit\UnitBase.h">
+      <Filter>Src\Object\Unit</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Object\Unit\Enemy\Enemy.h">
+      <Filter>Src\Object\Unit\Enemy</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Object\Unit\Player\Player.h">
+      <Filter>Src\Object\Unit\Player</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Object\Map\MapGrid.h">
+      <Filter>Src\Object\Unit\Map</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Scene\TitleScene.h">
+      <Filter>Src\Scene</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
