@@ -15,7 +15,7 @@ namespace App {
         int         m_currentStocks;
         int         m_maxStocks;      // ストック上限
         UnitState   m_state;
-        char        m_currentOp;
+        char        m_currentOp;      // 現在装備している演算子（マップで拾う）
         unsigned int m_color;
 
         std::queue<Vector2> m_pathQueue;
@@ -31,11 +31,14 @@ namespace App {
 
         void StartMove(IntVector2 finalGrid, std::queue<Vector2> path);
 
-        // --- 数値・ストック操作（実験場用） ---
+        // --- 数値・ストック・演算子操作 ---
         void SetNumber(int n);
         void AddNumber(int v) { SetNumber(m_number + v); }
         void SetStocks(int s);
         void AddStocks(int v) { SetStocks(m_currentStocks + v); }
+
+        // 追加：演算子をセットする関数（アイテムを拾った時用）
+        void SetOp(char op) { m_currentOp = op; }
         void CycleOp();
 
         // ゲッター

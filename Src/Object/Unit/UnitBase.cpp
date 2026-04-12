@@ -12,10 +12,9 @@ namespace App {
         , m_currentStocks(stocks)
         , m_maxStocks(maxStocks)
         , m_state(UnitState::Idle)
-        , m_currentOp('+')
+        , m_currentOp('+') // 初期装備は '+' に固定
         , m_moveLerp(0.0f)
     {
-        // 初期状態の数字に基づいて演算子を決定
         SetNumber(m_number);
     }
 
@@ -44,9 +43,7 @@ namespace App {
     void UnitBase::Draw() {
         if (m_state == UnitState::Dead) return;
 
-        // 子クラス（Player/Enemy）固有のグラフィック描画
         DrawUnitGraphic();
-        // マップ上の数字・ステータス描画
         DrawStatusOnMap();
     }
 
@@ -65,49 +62,44 @@ namespace App {
     void UnitBase::SetNumber(int n) {
         m_number = n;
 
-        // --- 1. 連続ストック変動ロジック ---
-        // 数字が10以上（チャージ）の判定
+        // --- 1. ストック変動ロジック ---
+
+        // 10以上になったらストック回復
         while (m_number >= 10 && m_currentStocks < m_maxStocks) {
             m_currentStocks++;
             m_number -= 10;
         }
-        if (m_number >= 10) m_number %= 10; // 満タン時は端数処理
+        // 満タンの時に10以上になった場合は、9で止めるか余りを出す
+        if (m_number >= 10) {
+            m_number %= 10;
+            if (m_number == 0) m_number = 9; // 0にならないよう調整
+        }
 
-        // 数字が0以下（ダメージ）の判定：連続してストックが減り、9から再出発する
+        // 0以下になったらストック消費して「9（全方位・最大距離）」に覚醒
         while (m_number <= 0 && m_currentStocks > 0) {
             m_currentStocks--;
-            m_number += 9; // ダメージを受けると 9 に戻る
+            m_number = 9; // 一律で最強状態の9へ
         }
 
         // 死亡判定
-        if (m_currentStocks <= 0) {
+        if (m_currentStocks <= 0 && m_number <= 0) {
             m_currentStocks = 0;
             m_state = UnitState::Dead;
             m_number = 0;
         }
 
-        // --- 2. ★数字連動による演算子（移動パターン）の自動決定 ---
-        // 橋本さん案：プラスは十字(3-5)、マイナスは横(1-2)、カケルは斜め(6-8)、ワルは桂馬(9)
-        int digit = m_number % 10;
-        if (digit == 0) digit = 10; // 0の時は特殊処理
-
-        if (digit >= 1 && digit <= 2)      m_currentOp = '-'; // 横
-        else if (digit >= 3 && digit <= 5) m_currentOp = '+'; // 十字
-        else if (digit >= 6 && digit <= 8) m_currentOp = '*'; // 斜め
-        else if (digit >= 9)               m_currentOp = '/'; // 桂馬
+        // ※削除した部分※
+        // 以前ここにあった「数字によって m_currentOp を書き換える処理」は、
+        // マップから演算子アイテムを拾う仕様になったため削除しました！
     }
 
     void UnitBase::SetStocks(int s) {
         m_currentStocks = std::clamp(s, 0, m_maxStocks);
-        if (m_currentStocks <= 0) m_state = UnitState::Dead;
+        if (m_currentStocks <= 0 && m_number <= 0) m_state = UnitState::Dead;
         else if (m_state == UnitState::Dead) m_state = UnitState::Idle;
-
-        // ストックが変わった際も演算子を再計算
-        SetNumber(m_number);
     }
 
     void UnitBase::CycleOp() {
-        // 手動切り替え（デバッグ用）
         if (m_currentOp == '+') m_currentOp = '-';
         else if (m_currentOp == '-') m_currentOp = '*';
         else if (m_currentOp == '*') m_currentOp = '/';
@@ -116,13 +108,13 @@ namespace App {
 
     void UnitBase::DrawStatusOnMap() const {
         int x = (int)m_screenPos.x;
-        int y = (int)m_screenPos.y - 45; // ユニットの少し上に表示
+        int y = (int)m_screenPos.y - 45;
 
         // 数字の背景円
         DrawCircle(x, y, 16, GetColor(0, 0, 0), TRUE);
         // 数字本体
         DrawFormatString(x - 5, y - 7, GetColor(255, 255, 0), "%d", m_number);
-        // 現在の型（演算子）
+        // 現在の演算子
         DrawFormatString(x + 18, y - 7, GetColor(255, 255, 255), "[%c]", m_currentOp);
     }
 
