@@ -8,7 +8,8 @@
 namespace App {
 
     BattleMaster::BattleMaster()
-        : m_currentPhase(Phase::PlayerTurn)
+        : m_currentPhase(Phase::P1_Move)
+        , m_gameMode(GameMode::VS_CPU)
         , m_mapGrid(80, Vector2(100, 100))
         , m_isPlayerSelected(false)
         , m_hoverGrid(-1, -1)
@@ -23,18 +24,21 @@ namespace App {
         }
     }
 
-    void BattleMaster::Init() {
+    void BattleMaster::Init(GameMode mode) {
+        m_gameMode = mode;
         m_player = std::make_unique<Player>(IntVector2{ 1, 1 }, m_mapGrid.GetCellCenter(1, 1), 5, 5, 5);
         m_enemy = std::make_unique<Enemy>(IntVector2{ 7, 7 }, m_mapGrid.GetCellCenter(7, 7), 7, 5, 5);
 
         m_player->SetOp('\0');
         m_enemy->SetOp('\0');
 
-        m_currentPhase = Phase::PlayerTurn;
+        m_currentPhase = Phase::P1_Move;
         m_isPlayerSelected = false;
+        m_enemyAIStarted = false;
 
         m_actionLog.clear();
-        AddLog(">>> バトル開始！ まずは演算子を拾え！");
+        std::string modeStr = (m_gameMode == GameMode::VS_CPU) ? "NPC対戦" : "対人対戦";
+        AddLog(">>> バトル開始！ [" + modeStr + "] まずは演算子を拾え！");
     }
 
     bool BattleMaster::CanMove(int number, char op, IntVector2 start, IntVector2 target, int& outCost) const {
@@ -75,6 +79,102 @@ namespace App {
         return false;
     }
 
+    // ★追加：移動の共通処理
+    void BattleMaster::HandleMoveInput(UnitBase& activeUnit, Phase nextPhase) {
+        if (activeUnit.IsMoving()) return;
+
+        auto& input = InputManager::GetInstance();
+        if (input.IsMouseLeftTrg()) {
+            IntVector2 pos = activeUnit.GetGridPos();
+
+            if (!m_isPlayerSelected) {
+                if (m_hoverGrid == pos) m_isPlayerSelected = true;
+            }
+            else {
+                if (m_hoverGrid == pos) {
+                    activeUnit.AddNumber(-1);
+                    AddLog("【待機】 その場で数値を調整した (コスト: -1)");
+                    m_isPlayerSelected = false;
+                    m_currentPhase = nextPhase;
+                }
+                else if (m_mapGrid.IsWithinBounds(m_hoverGrid.x, m_hoverGrid.y)) {
+                    int cost = 0;
+                    if (CanMove(activeUnit.GetNumber(), activeUnit.GetOp(), pos, m_hoverGrid, cost)) {
+                        activeUnit.AddNumber(-cost);
+                        std::string name = (&activeUnit == m_player.get()) ? "1P" : (m_gameMode == GameMode::VS_CPU ? "敵" : "2P");
+                        AddLog("【移動】 " + name + " (コスト: -" + std::to_string(cost) + ")");
+
+                        std::queue<Vector2> autoPath;
+                        int stepX = (m_hoverGrid.x > pos.x) ? 1 : (m_hoverGrid.x < pos.x) ? -1 : 0;
+                        int stepY = (m_hoverGrid.y > pos.y) ? 1 : (m_hoverGrid.y < pos.y) ? -1 : 0;
+                        IntVector2 curr = pos;
+                        while (curr != m_hoverGrid) {
+                            curr.x += stepX; curr.y += stepY;
+                            autoPath.push(m_mapGrid.GetCellCenter(curr.x, curr.y));
+                        }
+                        activeUnit.StartMove(m_hoverGrid, autoPath);
+                        m_isPlayerSelected = false;
+                        m_currentPhase = nextPhase;
+                    }
+                    else {
+                        m_isPlayerSelected = false;
+                    }
+                }
+            }
+        }
+    }
+
+    // ★追加：行動選択の共通処理
+    void BattleMaster::HandleActionInput(UnitBase& actor, UnitBase& targetUnit) {
+        if (actor.IsMoving()) return;
+
+        IntVector2 pos = actor.GetGridPos();
+        char pickedItem = m_mapGrid.PickUpItem(pos.x, pos.y);
+        if (pickedItem != '\0') {
+            actor.SetOp(pickedItem);
+            std::string name = (&actor == m_player.get()) ? "1P" : (m_gameMode == GameMode::VS_CPU ? "敵" : "2P");
+            AddLog("【取得】 " + name + "が [" + std::string(1, pickedItem) + "] を装備した！");
+        }
+
+        IntVector2 targetPos = targetUnit.GetGridPos();
+        bool canAttack = (std::abs(pos.x - targetPos.x) + std::abs(pos.y - targetPos.y) == 1);
+        bool hasOp = (actor.GetOp() != '\0');
+
+        auto& input = InputManager::GetInstance();
+        Vector2 mousePos = input.GetMousePos();
+        int sbX = 960;
+
+        if (input.IsMouseLeftTrg()) {
+            // 次のターンの人（1Pの次は2P、2Pの次は1P）
+            Phase nextTurnPhase = (&actor == m_player.get()) ? Phase::P2_Move : Phase::P1_Move;
+
+            if (canAttack && hasOp) {
+                if (CheckButtonClick(sbX + 40, 950, 270, 90, mousePos)) {
+                    ExecuteBattle(actor, targetUnit, actor); // 自分に適用
+                    m_currentPhase = nextTurnPhase;
+                    if (&actor != m_player.get()) m_mapGrid.UpdateTurn(); // 1往復でターン経過
+                }
+                else if (CheckButtonClick(sbX + 330, 950, 270, 90, mousePos)) {
+                    ExecuteBattle(actor, targetUnit, targetUnit); // 相手に適用
+                    m_currentPhase = nextTurnPhase;
+                    if (&actor != m_player.get()) m_mapGrid.UpdateTurn();
+                }
+                else if (CheckButtonClick(sbX + 620, 950, 270, 90, mousePos)) {
+                    AddLog("【待機】 ターンを終了した");
+                    m_currentPhase = nextTurnPhase;
+                    if (&actor != m_player.get()) m_mapGrid.UpdateTurn();
+                }
+            }
+            else {
+                if (CheckButtonClick(sbX + 200, 950, 560, 90, mousePos)) {
+                    AddLog("【待機】 ターンを終了した");
+                    m_currentPhase = nextTurnPhase;
+                    if (&actor != m_player.get()) m_mapGrid.UpdateTurn();
+                }
+            }
+        }
+    }
+
     void BattleMaster::Update() {
         auto& input = InputManager::GetInstance();
         input.Update();
@@ -82,140 +182,77 @@ namespace App {
         if (m_player) m_player->Update();
         if (m_enemy)  m_enemy->Update();
 
-        Vector2 mousePos = input.GetMousePos();
-        m_hoverGrid = m_mapGrid.ScreenToGrid(mousePos);
+        m_hoverGrid = m_mapGrid.ScreenToGrid(input.GetMousePos());
 
-        int sbX = 960;
+        // ★修正：フェーズによって処理を分岐
+        switch (m_currentPhase) {
+        case Phase::P1_Move:
+            HandleMoveInput(*m_player, Phase::P1_Action);
+            break;
 
-        // 【1. プレイヤー：移動フェーズ】 (変更なし)
-        if (m_currentPhase == Phase::PlayerTurn && m_player && !m_player->IsMoving()) {
-            if (input.IsMouseLeftTrg()) {
-                IntVector2 pPos = m_player->GetGridPos();
+        case Phase::P1_Action:
+            HandleActionInput(*m_player, *m_enemy);
+            break;
 
-                if (!m_isPlayerSelected) {
-                    if (m_hoverGrid == pPos) m_isPlayerSelected = true;
-                }
-                else {
-                    if (m_hoverGrid == pPos) {
-                        m_player->AddNumber(-1);
-                        AddLog("【待機】 その場で数値を調整した (コスト: -1)");
-                        m_isPlayerSelected = false;
-                        m_currentPhase = Phase::ActionSelect;
-                    }
-                    else if (m_mapGrid.IsWithinBounds(m_hoverGrid.x, m_hoverGrid.y)) {
-                        int cost = 0;
-                        if (CanMove(m_player->GetNumber(), m_player->GetOp(), pPos, m_hoverGrid, cost)) {
-                            m_player->AddNumber(-cost);
-                            AddLog("【移動】 プレイヤー (コスト: -" + std::to_string(cost) + ")");
-
-                            std::queue<Vector2> autoPath;
-                            int stepX = (m_hoverGrid.x > pPos.x) ? 1 : (m_hoverGrid.x < pPos.x) ? -1 : 0;
-                            int stepY = (m_hoverGrid.y > pPos.y) ? 1 : (m_hoverGrid.y < pPos.y) ? -1 : 0;
-                            IntVector2 curr = pPos;
-                            while (curr != m_hoverGrid) {
-                                curr.x += stepX; curr.y += stepY;
-                                autoPath.push(m_mapGrid.GetCellCenter(curr.x, curr.y));
-                            }
-                            m_player->StartMove(m_hoverGrid, autoPath);
-                            m_isPlayerSelected = false;
-                            m_currentPhase = Phase::ActionSelect;
-                        }
-                        else {
-                            m_isPlayerSelected = false;
-                        }
-                    }
-                }
-            }
-        }
-
-        // 【1.5 プレイヤー：行動選択フェーズ（移動後）】
-        if (m_currentPhase == Phase::ActionSelect && m_player && !m_player->IsMoving()) {
-            IntVector2 pP = m_player->GetGridPos();
-            char pickedItem = m_mapGrid.PickUpItem(pP.x, pP.y);
-            if (pickedItem != '\0') {
-                m_player->SetOp(pickedItem);
-                AddLog("【取得】 演算子 [" + std::string(1, pickedItem) + "] を装備した！");
-            }
-
-            IntVector2 eP = m_enemy ? m_enemy->GetGridPos() : IntVector2{ -1, -1 };
-            bool canAttack = m_enemy && (std::abs(pP.x - eP.x) + std::abs(pP.y - eP.y) == 1);
-            bool hasOp = (m_player->GetOp() != '\0'); // ★追加：アイテムを持っているか
-
-            if (input.IsMouseLeftTrg()) {
-                if (canAttack && hasOp) { // ★修正：隣接 ＆ アイテム所持時のみ
-                    if (CheckButtonClick(sbX + 40, 950, 270, 90, mousePos)) {
-                        ExecuteBattle(*m_player, *m_enemy, *m_player);
-                        m_currentPhase = Phase::EnemyTurn;
-                        m_enemyAIStarted = false;
-                    }
-                    else if (CheckButtonClick(sbX + 330, 950, 270, 90, mousePos)) {
-                        ExecuteBattle(*m_player, *m_enemy, *m_enemy);
-                        m_currentPhase = Phase::EnemyTurn;
-                        m_enemyAIStarted = false;
-                    }
-                    else if (CheckButtonClick(sbX + 620, 950, 270, 90, mousePos)) {
-                        AddLog("【待機】 ターンを終了した");
-                        m_currentPhase = Phase::EnemyTurn;
-                        m_enemyAIStarted = false;
-                    }
-                }
-                else {
-                    // ★修正：敵がいない、またはアイテムがない場合は待機ボタンのみ
-                    if (CheckButtonClick(sbX + 200, 950, 560, 90, mousePos)) {
-                        AddLog("【待機】 ターンを終了した");
-                        m_currentPhase = Phase::EnemyTurn;
-                        m_enemyAIStarted = false;
-                    }
-                }
-            }
-        }
-
-        // 【2. 敵のAIターンフェーズ】
-        if (m_currentPhase == Phase::EnemyTurn) {
-            if (m_player && !m_player->IsMoving()) {
+        case Phase::P2_Move:
+            if (m_gameMode == GameMode::VS_CPU) {
                 if (!m_enemyAIStarted) {
                     ExecuteEnemyAI();
                     m_enemyAIStarted = true;
                 }
                 else if (m_enemy && !m_enemy->IsMoving()) {
-                    IntVector2 eP = m_enemy->GetGridPos();
-                    char pickedItem = m_mapGrid.PickUpItem(eP.x, eP.y);
-                    if (pickedItem != '\0') {
-                        m_enemy->SetOp(pickedItem);
-                        AddLog("【取得】 敵が演算子 [" + std::string(1, pickedItem) + "] を装備した");
-                    }
-
-                    IntVector2 pP = m_player->GetGridPos();
-                    if (std::abs(pP.x - eP.x) + std::abs(pP.y - eP.y) == 1) {
-                        char eOp = m_enemy->GetOp();
-                        if (eOp != '\0') { // ★追加：敵もアイテムがないと攻撃できない
-                            int eNum = m_enemy->GetNumber();
-                            int pNum = m_player->GetNumber();
-                            int res = 0;
-                            if (eOp == '+') res = eNum + pNum;
-                            else if (eOp == '-') res = eNum - pNum;
-                            else if (eOp == '*') res = eNum * pNum;
-                            else if (eOp == '/') res = (pNum != 0) ? eNum / pNum : 0;
-
-                            if (res > 9) ExecuteBattle(*m_enemy, *m_player, *m_enemy);
-                            else ExecuteBattle(*m_enemy, *m_player, *m_player);
-                        }
-                        else {
-                            AddLog("【待機】 敵は演算子がないため様子を見ている");
-                        }
-                    }
-
-                    m_mapGrid.UpdateTurn();
-                    m_currentPhase = Phase::PlayerTurn;
+                    m_currentPhase = Phase::P2_Action;
                 }
             }
+            else {
+                HandleMoveInput(*m_enemy, Phase::P2_Action);
+            }
+            break;
+
+        case Phase::P2_Action:
+            if (m_gameMode == GameMode::VS_CPU) {
+                // AIの行動処理
+                IntVector2 eP = m_enemy->GetGridPos();
+                char pickedItem = m_mapGrid.PickUpItem(eP.x, eP.y);
+                if (pickedItem != '\0') {
+                    m_enemy->SetOp(pickedItem);
+                    AddLog("【取得】 敵が演算子 [" + std::string(1, pickedItem) + "] を装備した");
+                }
+
+                IntVector2 pP = m_player->GetGridPos();
+                if (std::abs(pP.x - eP.x) + std::abs(pP.y - eP.y) == 1) {
+                    char eOp = m_enemy->GetOp();
+                    if (eOp != '\0') {
+                        int eNum = m_enemy->GetNumber();
+                        int pNum = m_player->GetNumber();
+                        int res = 0;
+                        if (eOp == '+') res = eNum + pNum;
+                        else if (eOp == '-') res = eNum - pNum;
+                        else if (eOp == '*') res = eNum * pNum;
+                        else if (eOp == '/') res = (pNum != 0) ? eNum / pNum : 0;
+
+                        if (res > 9) ExecuteBattle(*m_enemy, *m_player, *m_enemy);
+                        else ExecuteBattle(*m_enemy, *m_player, *m_player);
+                    }
+                    else {
+                        AddLog("【待機】 敵は演算子がないため様子を見ている");
+                    }
+                }
+                m_mapGrid.UpdateTurn();
+                m_currentPhase = Phase::P1_Move;
+                m_enemyAIStarted = false;
+            }
+            else {
+                HandleActionInput(*m_enemy, *m_player);
+            }
+            break;
         }
     }
 
     void BattleMaster::ExecuteEnemyAI() {
         if (!m_enemy || m_enemy->GetStocks() <= 0 || !m_player) {
             m_mapGrid.UpdateTurn();
-            m_currentPhase = Phase::PlayerTurn;
+            m_currentPhase = Phase::P1_Move;
             return;
         }
 
@@ -292,21 +329,17 @@ namespace App {
     }
 
     void BattleMaster::ApplyBattleResult(UnitBase& unit, int resultNum) {
-        std::string name = (&unit == m_player.get()) ? "プレイヤー" : "敵";
+        std::string name = (&unit == m_player.get()) ? "1P" : (m_gameMode == GameMode::VS_CPU ? "敵" : "2P");
 
-        // --- 1. 数値のループ計算 (1～9の時計) ---
         int cycleValue = (resultNum - 1) % 9;
         if (cycleValue < 0) cycleValue += 9;
         int remain = cycleValue + 1;
 
-        // --- 2. ストックの増減計算（★修正：インフレ防止のため 1 固定） ---
         if (resultNum <= 0) {
-            // 0以下ならどれだけ小さくてもダメージは「1」
             unit.AddStocks(-1);
             AddLog("【的中】 " + name + " の残機 -1！");
         }
         else if (resultNum > 9) {
-            // 9を超えたらどれだけ大きくても回復は「1」
             unit.AddStocks(1);
             AddLog("【回復】 " + name + " の残機 +1！");
         }
@@ -314,7 +347,6 @@ namespace App {
             AddLog("【変化】 " + name + " の数値が書き換わった。");
         }
 
-        // 最終的な数値をセット
         unit.SetNumber(remain);
         AddLog("【結果】 " + name + " の数値は [" + std::to_string(remain) + "] になった。");
     }
@@ -330,20 +362,20 @@ namespace App {
         else if (aOp == '*') result = aNum * dNum;
         else if (aOp == '/') result = (dNum != 0) ? aNum / dNum : 0;
 
-        std::string aName = (&attacker == m_player.get()) ? "プレイヤー" : "敵";
-        std::string tName = (&target == m_player.get()) ? "プレイヤー" : "敵";
+        std::string aName = (&attacker == m_player.get()) ? "1P" : (m_gameMode == GameMode::VS_CPU ? "敵" : "2P");
+        std::string tName = (&target == m_player.get()) ? "1P" : (m_gameMode == GameMode::VS_CPU ? "敵" : "2P");
 
         AddLog(">> " + aName + " の計算！ [" + std::to_string(aNum) + " " + std::string(1, aOp) + " " + std::to_string(dNum) + " = " + std::to_string(result) + "]");
         AddLog(">> 結果を " + tName + " に適用！");
 
         ApplyBattleResult(target, result);
-
-        // ★修正：使用した演算子を消費し、未所持（\0）に戻す
         attacker.SetOp('\0');
     }
 
     void BattleMaster::DrawEnemyDangerArea() {
         if (!m_enemy || m_enemy->GetStocks() <= 0 || m_enemy->IsMoving()) return;
+        // NPC戦の時だけ危険エリアを表示
+        if (m_gameMode == GameMode::VS_PLAYER) return;
 
         IntVector2 ePos = m_enemy->GetGridPos();
         int eNum = m_enemy->GetNumber();
@@ -379,11 +411,20 @@ namespace App {
     }
 
     void BattleMaster::DrawMovableArea() {
-        if (!m_isPlayerSelected || !m_player || m_player->IsMoving()) return;
+        if (!m_isPlayerSelected) return;
+        // ★修正：今のターンの人をアクティブユニットとする
+        UnitBase* activeUnit = nullptr;
+        if (m_currentPhase == Phase::P1_Move || m_currentPhase == Phase::P1_Action) {
+            activeUnit = m_player.get();
+        }
+        else {
+            activeUnit = m_enemy.get();
+        }
 
-        IntVector2 pPos = m_player->GetGridPos();
-        int pNum = m_player->GetNumber();
-        char pOp = m_player->GetOp();
+        if (!activeUnit || activeUnit->IsMoving()) return;
+        IntVector2 pPos = activeUnit->GetGridPos();
+        int pNum = activeUnit->GetNumber();
+        char pOp = activeUnit->GetOp();
 
         SetDrawBlendMode(DX_BLENDMODE_ALPHA, 100);
 
@@ -441,11 +482,29 @@ namespace App {
         DrawBox(sbX, 0, 1920, 1080, GetColor(20, 20, 25), TRUE);
         DrawLine(sbX, 0, sbX, 1080, GetColor(80, 120, 180), 4);
 
-        unsigned int phaseCol = (m_currentPhase == Phase::EnemyTurn) ? GetColor(180, 40, 40) : GetColor(40, 80, 160);
+        // ★修正：ターン情報を動的に変更
+        unsigned int phaseCol;
+        const char* phaseName;
+
+        if (m_currentPhase == Phase::P1_Move) {
+            phaseCol = GetColor(40, 80, 160);
+            phaseName = "1Pのターン (移動選択)";
+        }
+        else if (m_currentPhase == Phase::P1_Action) {
+            phaseCol = GetColor(40, 80, 160);
+            phaseName = "1Pのターン (行動選択)";
+        }
+        else if (m_currentPhase == Phase::P2_Move) {
+            phaseCol = GetColor(180, 40, 40);
+            phaseName = (m_gameMode == GameMode::VS_CPU) ? "エネミーのターン (思考中)" : "2Pのターン (移動選択)";
+        }
+        else {
+            phaseCol = GetColor(180, 40, 40);
+            phaseName = (m_gameMode == GameMode::VS_CPU) ? "エネミーのターン (思考中)" : "2Pのターン (行動選択)";
+        }
+
         DrawBox(sbX, 0, 1920, 70, phaseCol, TRUE);
         SetFontSize(38);
-        const char* phaseName = (m_currentPhase == Phase::PlayerTurn) ? "プレイヤーのターン (移動選択)" :
-            (m_currentPhase == Phase::ActionSelect) ? "プレイヤーのターン (行動選択)" : "エネミーのターン (思考中)";
         DrawFormatString(sbX + 40, 15, GetColor(255, 255, 255), ">>> %s <<<", phaseName);
 
         SetFontSize(24);
@@ -453,11 +512,23 @@ namespace App {
         DrawFormatString(sbX + 700, 85, GetColor(255, 200, 50), "アイテム再生成: %d", m_mapGrid.GetTurnsUntilNextSpawn());
 
         Vector2 mousePos = InputManager::GetInstance().GetMousePos();
-        IntVector2 pP = m_player ? m_player->GetGridPos() : IntVector2{ -1,-1 };
-        IntVector2 eP = m_enemy ? m_enemy->GetGridPos() : IntVector2{ -1,-1 };
+        // ★修正：アクティブなユニットを動的に取得
+        UnitBase* activeActor = nullptr;
+        UnitBase* activeTarget = nullptr;
 
-        bool canAttack = m_enemy && (std::abs(pP.x - eP.x) + std::abs(pP.y - eP.y) == 1);
-        bool hasOp = (m_player && m_player->GetOp() != '\0'); // ★アイテム所持フラグ
+        if (m_currentPhase == Phase::P1_Move || m_currentPhase == Phase::P1_Action) {
+            activeActor = m_player.get();
+            activeTarget = m_enemy.get();
+        }
+        else {
+            activeActor = m_enemy.get();
+            activeTarget = m_player.get();
+        }
+        IntVector2 aP = activeActor ? activeActor->GetGridPos() : IntVector2{ -1,-1 };
+        IntVector2 tP = activeTarget ? activeTarget->GetGridPos() : IntVector2{ -1,-1 };
+
+        bool canAttack = activeTarget && (std::abs(aP.x - tP.x) + std::abs(aP.y - tP.y) == 1);
+        bool hasOp = (activeActor && activeActor->GetOp() != '\0');
 
         bool isHoverSelf = canAttack && hasOp && CheckButtonClick(sbX + 40, 950, 270, 90, mousePos);
         bool isHoverEnemy = canAttack && hasOp && CheckButtonClick(sbX + 330, 950, 270, 90, mousePos);
@@ -468,18 +539,18 @@ namespace App {
         DrawBox(sbX + 30, sy + 35, sbX + 930, sy + 250, GetColor(35, 40, 55), TRUE);
         DrawBox(sbX + 30, sy + 35, sbX + 930, sy + 250, GetColor(80, 120, 180), FALSE);
 
-        if (canAttack && hasOp) { // ★修正：アイテムがある時だけ計算表示
-            int pNum = m_player->GetNumber();
-            int eNum = m_enemy->GetNumber();
-            char pOp = m_player->GetOp();
+        if (canAttack && hasOp) {
+            int aNum = activeActor->GetNumber();
+            int tNum = activeTarget->GetNumber();
+            char aOp = activeActor->GetOp();
             int res = 0;
-            if (pOp == '+') res = pNum + eNum;
-            else if (pOp == '-') res = pNum - eNum;
-            else if (pOp == '*') res = pNum * eNum;
-            else if (pOp == '/') res = (eNum != 0) ? pNum / eNum : 0;
+            if (aOp == '+') res = aNum + tNum;
+            else if (aOp == '-') res = aNum - tNum;
+            else if (aOp == '*') res = aNum * tNum;
+            else if (aOp == '/') res = (tNum != 0) ? aNum / tNum : 0;
 
             SetFontSize(80);
-            DrawFormatString(sbX + 220, sy + 60, GetColor(255, 255, 255), "%d %c %d =", pNum, pOp, eNum);
+            DrawFormatString(sbX + 220, sy + 60, GetColor(255, 255, 255), "%d %c %d =", aNum, aOp, tNum);
 
             int cv = (res - 1) % 9; if (cv < 0) cv += 9; int remain = cv + 1;
 
@@ -488,21 +559,24 @@ namespace App {
 
             SetFontSize(30);
             if (isHoverSelf || isHoverEnemy) {
-                const char* target = isHoverSelf ? "プレイヤー" : "敵";
+                // ホバーしているのが自分か相手かでテキストを変える
+                std::string targetName = isHoverSelf ? (activeActor == m_player.get() ? "1P" : "2P") : (activeTarget == m_player.get() ? "1P" : "2P");
+                if (m_gameMode == GameMode::VS_CPU && activeTarget == m_enemy.get() && isHoverEnemy) targetName = "敵";
+
                 unsigned int tCol = isHoverSelf ? GetColor(100, 255, 150) : GetColor(255, 120, 120);
 
                 if (res <= 0)
-                    DrawFormatString(sbX + 220, sy + 185, tCol, "▼ %s の残機が 1 減り、数値は %d になります", target, remain);
+                    DrawFormatString(sbX + 220, sy + 185, tCol, "▼ %s の残機が 1 減り、数値は %d になります", targetName.c_str(), remain);
                 else if (res > 9)
-                    DrawFormatString(sbX + 220, sy + 185, tCol, "▼ %s の残機が 1 増え、数値は %d になります", target, remain);
+                    DrawFormatString(sbX + 220, sy + 185, tCol, "▼ %s の残機が 1 増え、数値は %d になります", targetName.c_str(), remain);
                 else
-                    DrawFormatString(sbX + 220, sy + 185, tCol, "▼ %s の残機は変わらず、数値が %d に変化します", target, remain);
+                    DrawFormatString(sbX + 220, sy + 185, tCol, "▼ %s の残機は変わらず、数値が %d に変化します", targetName.c_str(), remain);
             }
             else {
                 DrawString(sbX + 310, sy + 185, "適用するボタンを選んでください", GetColor(150, 160, 180));
             }
         }
-        else if (canAttack && !hasOp) { // ★追加：敵はいるがアイテムがない時
+        else if (canAttack && !hasOp) {
             SetFontSize(32);
             DrawString(sbX + 280, sy + 100, "【 演算子アイテムが必要です 】", GetColor(255, 100, 100));
             SetFontSize(26);
@@ -514,10 +588,11 @@ namespace App {
         }
 
         // --- 4. ユニット情報比較 ---
-        auto drawUnitCard = [&](int x, int y, UnitBase* unit, bool isPlayer) {
-            unsigned int baseCol = isPlayer ? GetColor(100, 200, 255) : GetColor(255, 100, 100);
+        auto drawUnitCard = [&](int x, int y, UnitBase* unit, bool is1P) {
+            unsigned int baseCol = is1P ? GetColor(100, 200, 255) : GetColor(255, 100, 100);
             SetFontSize(28);
-            DrawString(x, y, isPlayer ? "■ プレイヤー (自分)" : "■ ターゲット (相手)", baseCol);
+            std::string headerName = is1P ? "■ 1P (青)" : (m_gameMode == GameMode::VS_CPU ? "■ 敵 (赤)" : "■ 2P (赤)");
+            DrawString(x, y, headerName.c_str(), baseCol);
 
             if (!unit) return;
 
@@ -532,7 +607,6 @@ namespace App {
             SetFontSize(24);
             DrawFormatString(x + 20, y + 85, GetColor(255, 255, 255), "現在の数値 : %d", num);
 
-            // ★未所持の場合は表示を変える
             char curOp = unit->GetOp();
             const char* opDisp = (curOp == '\0') ? "未所持" : (curOp == '+') ? "[ ＋ ]" : (curOp == '-') ? "[ － ]" : (curOp == '*') ? "[ ＊ ]" : "[ ／ ]";
             DrawFormatString(x + 20, y + 115, GetColor(255, 255, 100), "演算子　　 : %s", opDisp);
@@ -574,8 +648,11 @@ namespace App {
         DrawFormatString(sbX + 60, ry + 30, GetColor(150, 150, 150), "演算子の力: ＋＝足す ｜ －＝引く ｜ ＊＝掛ける ｜ ÷＝割る");
 
         // --- 7. 操作ボタン ---
-        if (m_currentPhase == Phase::ActionSelect) {
-            if (canAttack && hasOp) { // ★修正：アイテムがある時だけ３択表示
+        if (m_currentPhase == Phase::P1_Action || m_currentPhase == Phase::P2_Action) {
+            // CPUの時は描画しない
+            if (m_currentPhase == Phase::P2_Action && m_gameMode == GameMode::VS_CPU) return;
+
+            if (canAttack && hasOp) {
                 auto drawBtn = [&](int x, int y, int w, int h, const char* text, unsigned int col, bool hover) {
                     unsigned int c = hover ? col : col - 0x303030;
                     DrawBox(x, y, x + w, y + h, c, TRUE);
@@ -585,11 +662,10 @@ namespace App {
                     };
 
                 drawBtn(sbX + 40, 950, 270, 90, "自分を書き換える", GetColor(50, 150, 80), isHoverSelf);
-                drawBtn(sbX + 330, 950, 270, 90, "敵を攻撃する", GetColor(180, 50, 50), isHoverEnemy);
+                drawBtn(sbX + 330, 950, 270, 90, "相手を攻撃する", GetColor(180, 50, 50), isHoverEnemy);
                 drawBtn(sbX + 620, 950, 270, 90, "待機する", GetColor(80, 80, 100), CheckButtonClick(sbX + 620, 950, 270, 90, mousePos));
             }
             else {
-                // ★修正：敵がいない or アイテムがない時は「ターン終了」のみ
                 bool isHoverWait = CheckButtonClick(sbX + 200, 950, 560, 90, mousePos);
                 unsigned int waitCol = isHoverWait ? GetColor(100, 100, 120) : GetColor(70, 70, 90);
                 DrawBox(sbX + 200, 950, sbX + 760, 1040, waitCol, TRUE);

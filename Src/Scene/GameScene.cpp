@@ -19,7 +19,7 @@ namespace App {
     void GameScene::Init() {
         m_frameCount = 0;
         m_showInfo = true;
-        m_battleMaster.Init();
+        m_battleMaster.Init(BattleMaster::GameMode::VS_PLAYER);
     }
 
     void GameScene::Load() {}
