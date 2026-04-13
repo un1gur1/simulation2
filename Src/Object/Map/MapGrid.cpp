@@ -1,6 +1,8 @@
 #include "MapGrid.h"
 #include <random>
 #include <string>
+#include <cmath>
+#include <DxLib.h>
 
 namespace App {
 
@@ -28,7 +30,6 @@ namespace App {
 
         std::random_device rd;
         std::mt19937 gen(rd());
-        // ★修正：内部データは必ず半角の '/' を使う！
         std::vector<char> baseSequence = { '+', '-', '*', '/' };
 
         for (const auto& area : areas) {
@@ -108,18 +109,43 @@ namespace App {
             }
         }
 
+        // ★追加：アニメーション用の現在時刻を取得
+        int nowTime = GetNowCount();
+
         // 2. アイテム（カード）の描画
         for (const auto& sp : m_spawnPoints) {
             Vector2 pos = GetCellCenter(sp.pos.x, sp.pos.y);
 
             // --- カードデザインの描画 ---
             if (sp.isAvailable) {
+                // ★追加：ふわふわ（Y座標のオフセット）
+                // 200.0fを小さくすると速く、5.0fを大きくすると揺れ幅が大きくなります
+                float offsetY = std::sin(nowTime / 200.0f) * 5.0f;
+
+                // 色と記号の事前判定
+                int symbolColor = GetColor(20, 20, 20);
+                std::string displaySym = "";
+
+                if (sp.currentSymbol == '+') { symbolColor = GetColor(220, 50, 50);  displaySym = "+"; }
+                else if (sp.currentSymbol == '-') { symbolColor = GetColor(50, 100, 220); displaySym = "-"; }
+                else if (sp.currentSymbol == '*') { symbolColor = GetColor(50, 180, 50);  displaySym = "x"; }
+                else if (sp.currentSymbol == '/') { symbolColor = GetColor(180, 50, 180); displaySym = "÷"; }
+
+                // ★追加：ぽわぽわ（後光オーラの明滅）
+                // 150.0fの周期で、透明度が 40 ～ 120 の間を滑らかに往復します
+                int pulseAlpha = 80 + (int)(std::sin(nowTime / 150.0f) * 40);
+                SetDrawBlendMode(DX_BLENDMODE_ALPHA, pulseAlpha);
+                // カードの後ろに、記号と同じ色でぼんやり光る円を描く
+                DrawCircle((int)pos.x, (int)(pos.y - 8 + offsetY), 35, symbolColor, TRUE);
+                SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+
+                // カードの座標計算（offsetY を足して全体を揺らす）
                 int cardW = 44;
                 int cardH = 58;
                 int cx1 = (int)pos.x - cardW / 2;
-                int cy1 = (int)pos.y - cardH / 2 - 8; // 少し上に浮かせる
+                int cy1 = (int)pos.y - cardH / 2 - 8 + (int)offsetY;
                 int cx2 = (int)pos.x + cardW / 2;
-                int cy2 = (int)pos.y + cardH / 2 - 8;
+                int cy2 = (int)pos.y + cardH / 2 - 8 + (int)offsetY;
 
                 // ① 影の描画（立体感）
                 SetDrawBlendMode(DX_BLENDMODE_ALPHA, 150);
@@ -131,17 +157,9 @@ namespace App {
                 // ③ カードの枠線
                 DrawBox(cx1, cy1, cx2, cy2, GetColor(100, 100, 120), FALSE);
 
-                // ④ 記号ごとに色を変更＆「/」を「÷」に変換
-                int symbolColor = GetColor(20, 20, 20);
-                std::string displaySym = "";
-
-                if (sp.currentSymbol == '+') { symbolColor = GetColor(220, 50, 50);  displaySym = "+"; }
-                else if (sp.currentSymbol == '-') { symbolColor = GetColor(50, 100, 220); displaySym = "-"; }
-                else if (sp.currentSymbol == '*') { symbolColor = GetColor(50, 180, 50);  displaySym = "x"; } // 視認性のため x に
-                else if (sp.currentSymbol == '/') { symbolColor = GetColor(180, 50, 180); displaySym = "÷"; } // ここで変換！
-
-                // 記号の描画
-                DrawFormatString(cx1 + 12, cy1 + 18, symbolColor, "%s", displaySym.c_str());
+                // ④ 記号の描画
+                SetFontSize(28); // 枠に収まるように少しフォントサイズ指定を追加
+                DrawFormatString(cx1 + 12, cy1 + 16, symbolColor, "%s", displaySym.c_str());
             }
 
             // --- 予測情報の描画 ---

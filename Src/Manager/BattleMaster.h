@@ -48,11 +48,11 @@ namespace App {
         void Draw();
 
         bool IsGameOver() const;
-
+        bool IsPlayerWin() const;
     private:
         bool CheckButtonClick(int x, int y, int w, int h, Vector2 mousePos);
-        void ExecuteBattle(UnitBase& attacker, UnitBase& defender);
-        void ExecuteEnemyAI();
+        void ExecuteBattle(UnitBase& attacker, UnitBase& defender, UnitBase& target);
+        void ExecuteEnemyAI();       
         void DrawMovableArea();
         void DrawEnemyDangerArea();
     };

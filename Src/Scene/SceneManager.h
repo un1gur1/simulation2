@@ -8,6 +8,7 @@ namespace App {
     class Fader;
     class GameScene; 
 	class TitleScene;
+	class ResultScene;
 
     class SceneManager
     {
@@ -18,8 +19,8 @@ namespace App {
             NONE,
             TITLE,
             GAME,
-            RESULT_WIN,
-            RESULT_LOSE,
+            RESULT,
+            
         };
 
     public:

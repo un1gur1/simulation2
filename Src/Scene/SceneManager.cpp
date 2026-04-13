@@ -2,6 +2,7 @@
 
 #include "GameScene.h"
 #include "TitleScene.h"
+#include "ResultScene.h"
 
 #include <utility>
 
@@ -133,13 +134,8 @@ namespace App {
             // GameScene Ç™é¿ëïçœÇ›Ç≈Ç†ÇÍÇŒê∂ê¨
             scene_ = new GameScene();
             break;
-        case SCENE_ID::RESULT_WIN:
-            // scene_ = new ResultWinScene();
-            scene_ = nullptr;
-            break;
-        case SCENE_ID::RESULT_LOSE:
-            // scene_ = new ResultLoseScene();
-            scene_ = nullptr;
+        case SCENE_ID::RESULT:
+            scene_ = new ResultScene();
             break;
         default:
             scene_ = nullptr;

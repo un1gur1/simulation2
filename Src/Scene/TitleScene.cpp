@@ -26,6 +26,7 @@ namespace App {
     void TitleScene::Update() {
         ++m_frameCount;
 
+        if (m_frameCount < 30) return;
         // スペースキーでゲーム開始（シーン遷移処理は管理側で実装）
         if (CheckHitKey(KEY_INPUT_SPACE)) {
             // ここでシーン遷移要求を出す
