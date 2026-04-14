@@ -6,13 +6,13 @@
 
 namespace App {
 
-    // 拡張ポイント1：演算子アイテムの発生地点（スポナー）を管理する構造体
+    // MapGrid.h の一部
     struct SpawnPoint {
-        IntVector2 pos;              // 現在のマス座標
-        std::vector<char> sequence;  // 変化するサイクルの順序（例: '+', '-', '*', '/'）
-        int currentIndex;            // 現在の配列インデックス
-        char currentSymbol;          // 現在拾える記号
-        bool isAvailable;            // マスにアイテムが存在しているか
+        IntVector2 pos;
+        std::vector<char> sequence;
+        int currentIndex;   // 次に出現する予定のアイテム番号
+        char currentSymbol; // 現在見えているアイテム
+        bool isAvailable;   // 今アイテムが落ちているか
     };
 
     class MapGrid {

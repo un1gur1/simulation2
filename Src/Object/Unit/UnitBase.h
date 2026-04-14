@@ -47,7 +47,7 @@ namespace App {
         int GetMaxStocks() const { return m_maxStocks; }
         char GetOp() const { return m_currentOp; }
         IntVector2 GetGridPos() const { return m_gridPos; }
-        bool IsMoving() const { return m_state == UnitState::Moving; }
+           bool IsMoving() const { return m_state == UnitState::Moving; }
 
     protected:
         virtual void DrawUnitGraphic() = 0;

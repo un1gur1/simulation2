@@ -19,7 +19,9 @@ namespace App {
     void GameScene::Init() {
         m_frameCount = 0;
         m_showInfo = true;
-        m_battleMaster.Init(BattleMaster::GameMode::VS_PLAYER);
+        //m_battleMaster.Init(BattleMaster::GameMode::VS_PLAYER);
+        //m_battleMaster.Init(BattleMaster::GameMode::VS_CPU);
+        m_battleMaster.Init();
     }
 
     void GameScene::Load() {}
@@ -30,7 +32,7 @@ namespace App {
 
         // ★追加：ゲームオーバー判定とシーン遷移
         if (m_battleMaster.IsGameOver()) {
-            // どっちが勝ったかを取得
+            // どっちが勝ったかを取得 
             bool isWin = m_battleMaster.IsPlayerWin();
 
             // 次のシーン（ResultScene）に勝敗データをセット

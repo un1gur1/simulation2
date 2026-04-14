@@ -107,15 +107,15 @@ namespace App {
     }
 
     void UnitBase::DrawStatusOnMap() const {
-        int x = (int)m_screenPos.x;
-        int y = (int)m_screenPos.y - 45;
+        //int x = (int)m_screenPos.x;
+        //int y = (int)m_screenPos.y - 45;
 
-        // ”š‚Ì”wŒi‰~
-        DrawCircle(x, y, 16, GetColor(0, 0, 0), TRUE);
-        // ”š–{‘Ì
-        DrawFormatString(x - 5, y - 7, GetColor(255, 255, 0), "%d", m_number);
-        // Œ»İ‚Ì‰‰Zq
-        DrawFormatString(x + 18, y - 7, GetColor(255, 255, 255), "[%c]", m_currentOp);
+        //// ”š‚Ì”wŒi‰~
+        //DrawCircle(x, y, 16, GetColor(0, 0, 0), TRUE);
+        //// ”š–{‘Ì
+        //DrawFormatString(x - 5, y - 7, GetColor(255, 255, 0), "%d", m_number);
+        //// Œ»İ‚Ì‰‰Zq
+        //DrawFormatString(x + 18, y - 7, GetColor(255, 255, 255), "[%c]", m_currentOp);
     }
 
 } // namespace App

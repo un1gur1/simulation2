@@ -1,8 +1,8 @@
+#define NOMINMAX
 #include "MapGrid.h"
-#include <random>
-#include <string>
-#include <cmath>
 #include <DxLib.h>
+#include <cmath>
+#include <string>
 
 namespace App {
 
@@ -12,39 +12,68 @@ namespace App {
         , m_totalTurns(0)
         , m_currentCycleTick(0)
     {
-        for (int y = 0; y < HEIGHT; y++) {
-            for (int x = 0; x < WIDTH; x++) {
-                m_terrain[x][y] = 0;
-            }
-        }
         InitializeSpawnPoints();
     }
 
     void MapGrid::InitializeSpawnPoints() {
-        struct SpawnArea { int minX, maxX, minY, maxY; };
-        std::vector<SpawnArea> areas = {
-            {1, 2, 1, 2}, {6, 7, 1, 2},
-            {1, 2, 6, 7}, {6, 7, 6, 7},
-            {4, 4, 4, 4}
+        m_spawnPoints.clear();
+
+        // ★共通の湧き順シーケンス
+        std::vector<char> baseSeq = { '+', '-', '*', '/' };
+
+        // ★配置場所の定義（9x9マップ）
+        struct PointDef { int x, y, startIdx; };
+        PointDef defs[] = {
+            { 1, 1, 1 }, // 左上：＋ から
+            { 7, 1, 2 }, // 右上：－ から
+            { 1, 7, 1 }, // 左下：＊ から
+            { 7, 7, 2 }, // 右下：／ から
+
+            // --- 中央 ---
+            { 4, 4, 0 }  // 中央：＋ から
         };
 
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::vector<char> baseSequence = { '+', '-', '*', '/' };
-
-        for (const auto& area : areas) {
-            std::uniform_int_distribution<> distX(area.minX, area.maxX);
-            std::uniform_int_distribution<> distY(area.minY, area.maxY);
-            std::uniform_int_distribution<> distSeq(0, baseSequence.size() - 1);
-
+        // 配列の要素数分だけSpawnPointを作成
+        for (const auto& d : defs) {
             SpawnPoint sp;
-            sp.pos = { distX(gen), distY(gen) };
-            sp.sequence = baseSequence;
-            sp.currentIndex = distSeq(gen);
+            sp.pos = { d.x, d.y };
+            sp.sequence = baseSeq;
+            sp.currentIndex = d.startIdx % baseSeq.size(); // 安全装置
             sp.currentSymbol = sp.sequence[sp.currentIndex];
-            sp.isAvailable = true;
-
+            sp.isAvailable = true; // 最初は全て配置
             m_spawnPoints.push_back(sp);
+        }
+    }
+
+    char MapGrid::PickUpItem(int x, int y) {
+        for (auto& sp : m_spawnPoints) {
+            if (sp.pos.x == x && sp.pos.y == y && sp.isAvailable) {
+                char picked = sp.currentSymbol;
+                sp.isAvailable = false; // 取られた状態にする
+
+                // 次のアイテムへ進める
+                sp.currentIndex = (sp.currentIndex + 1) % sp.sequence.size();
+                sp.currentSymbol = sp.sequence[sp.currentIndex];
+
+                return picked;
+            }
+        }
+        return '\0';
+    }
+
+    void MapGrid::UpdateTurn() {
+        m_totalTurns++;
+        m_currentCycleTick++;
+
+        if (m_currentCycleTick >= SPAWN_INTERVAL) {
+            m_currentCycleTick = 0;
+
+            for (auto& sp : m_spawnPoints) {
+                // 取られている（空の）場所だけ、次を出現させる
+                if (!sp.isAvailable) {
+                    sp.isAvailable = true;
+                }
+            }
         }
     }
 
@@ -63,31 +92,7 @@ namespace App {
     }
 
     bool MapGrid::IsWithinBounds(int x, int y) const {
-        return x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT;
-    }
-
-    void MapGrid::UpdateTurn() {
-        m_totalTurns++;
-        m_currentCycleTick++;
-
-        if (m_currentCycleTick >= SPAWN_INTERVAL) {
-            m_currentCycleTick = 0;
-            for (auto& sp : m_spawnPoints) {
-                sp.currentIndex = (sp.currentIndex + 1) % sp.sequence.size();
-                sp.currentSymbol = sp.sequence[sp.currentIndex];
-                sp.isAvailable = true;
-            }
-        }
-    }
-
-    char MapGrid::PickUpItem(int x, int y) {
-        for (auto& sp : m_spawnPoints) {
-            if (sp.pos.x == x && sp.pos.y == y && sp.isAvailable) {
-                sp.isAvailable = false;
-                return sp.currentSymbol;
-            }
-        }
-        return '\0';
+        return x >= 0 && x < 9 && y >= 0 && y < 9;
     }
 
     char MapGrid::GetItemAt(int x, int y) const {
@@ -100,75 +105,102 @@ namespace App {
     }
 
     void MapGrid::Draw() const {
-        // 1. 盤面の描画
-        for (int y = 0; y < HEIGHT; y++) {
-            for (int x = 0; x < WIDTH; x++) {
+        // --- 1. 盤面描画 ---
+        // 紺色ベースの画面に完全に馴染む、深く静かなマス目
+        unsigned int lineCol = GetColor(40, 45, 60);
+        unsigned int fillCol = GetColor(15, 18, 25);
+
+        for (int y = 0; y < 9; y++) {
+            for (int x = 0; x < 9; x++) {
                 Vector2 pos = GetCellCenter(x, y);
-                DrawBox((int)pos.x - 39, (int)pos.y - 39, (int)pos.x + 39, (int)pos.y + 39, GetColor(60, 60, 80), FALSE);
-                DrawBox((int)pos.x - 38, (int)pos.y - 38, (int)pos.x + 38, (int)pos.y + 38, GetColor(30, 30, 45), TRUE);
+                // 四角形はジャギーが出ないのでそのままDrawBoxでOK
+                DrawBox((int)pos.x - 39, (int)pos.y - 39, (int)pos.x + 39, (int)pos.y + 39, lineCol, FALSE);
+                DrawBox((int)pos.x - 38, (int)pos.y - 38, (int)pos.x + 38, (int)pos.y + 38, fillCol, TRUE);
             }
         }
 
-        // ★追加：アニメーション用の現在時刻を取得
-        int nowTime = GetNowCount();
+        // --- 2. アイテム描画（高級盤面はめ込み ＆ ツルツルAA仕様） ---
+        double time = GetNowCount() / 1000.0;
+        // ★ floatにして滑らかに脈動させる
+        float pulse = (float)(sin(time * 5.0) * 4.0);
 
-        // 2. アイテム（カード）の描画
         for (const auto& sp : m_spawnPoints) {
-            Vector2 pos = GetCellCenter(sp.pos.x, sp.pos.y);
+            Vector2 basePos = GetCellCenter(sp.pos.x, sp.pos.y);
+            // ★ AA用に座標もfloatで保持
+            float drawX = basePos.x;
+            float drawY = basePos.y;
 
-            // --- カードデザインの描画 ---
-            if (sp.isAvailable) {
-                // ★追加：ふわふわ（Y座標のオフセット）
-                // 200.0fを小さくすると速く、5.0fを大きくすると揺れ幅が大きくなります
-                float offsetY = std::sin(nowTime / 200.0f) * 5.0f;
+            if (!sp.isAvailable) {
+                // ★ ホログラム（出現待ち）演出：ダークな盤面に浮かぶ電子予測
+                SetDrawBlendMode(DX_BLENDMODE_ADD, 120);
+                // ★ DrawCircleAAに変更（第4引数はポリゴン分割数。64でかなり綺麗）
+                DrawCircleAA(drawX, drawY, 22.0f + pulse / 2.0f, 64, GetColor(80, 100, 120), FALSE, 2.0f);
 
-                // 色と記号の事前判定
-                int symbolColor = GetColor(20, 20, 20);
-                std::string displaySym = "";
-
-                if (sp.currentSymbol == '+') { symbolColor = GetColor(220, 50, 50);  displaySym = "+"; }
-                else if (sp.currentSymbol == '-') { symbolColor = GetColor(50, 100, 220); displaySym = "-"; }
-                else if (sp.currentSymbol == '*') { symbolColor = GetColor(50, 180, 50);  displaySym = "x"; }
-                else if (sp.currentSymbol == '/') { symbolColor = GetColor(180, 50, 180); displaySym = "÷"; }
-
-                // ★追加：ぽわぽわ（後光オーラの明滅）
-                // 150.0fの周期で、透明度が 40 ～ 120 の間を滑らかに往復します
-                int pulseAlpha = 80 + (int)(std::sin(nowTime / 150.0f) * 40);
-                SetDrawBlendMode(DX_BLENDMODE_ALPHA, pulseAlpha);
-                // カードの後ろに、記号と同じ色でぼんやり光る円を描く
-                DrawCircle((int)pos.x, (int)(pos.y - 8 + offsetY), 35, symbolColor, TRUE);
+                SetFontSize(24);
+                char waitStr[2] = { sp.currentSymbol, '\0' };
+                int tw = GetDrawStringWidth(waitStr, 1);
+                // 文字はボヤけないように int にキャスト
+                DrawString((int)drawX - tw / 2, (int)drawY - 12, waitStr, GetColor(100, 140, 180));
                 SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
-
-                // カードの座標計算（offsetY を足して全体を揺らす）
-                int cardW = 44;
-                int cardH = 58;
-                int cx1 = (int)pos.x - cardW / 2;
-                int cy1 = (int)pos.y - cardH / 2 - 8 + (int)offsetY;
-                int cx2 = (int)pos.x + cardW / 2;
-                int cy2 = (int)pos.y + cardH / 2 - 8 + (int)offsetY;
-
-                // ① 影の描画（立体感）
-                SetDrawBlendMode(DX_BLENDMODE_ALPHA, 150);
-                DrawBox(cx1 + 5, cy1 + 5, cx2 + 5, cy2 + 5, GetColor(10, 10, 15), TRUE);
-                SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
-
-                // ② カードの背景（白）
-                DrawBox(cx1, cy1, cx2, cy2, GetColor(245, 245, 245), TRUE);
-                // ③ カードの枠線
-                DrawBox(cx1, cy1, cx2, cy2, GetColor(100, 100, 120), FALSE);
-
-                // ④ 記号の描画
-                SetFontSize(28); // 枠に収まるように少しフォントサイズ指定を追加
-                DrawFormatString(cx1 + 12, cy1 + 16, symbolColor, "%s", displaySym.c_str());
+                continue;
             }
 
-            // --- 予測情報の描画 ---
-            char nextSym = sp.sequence[(sp.currentIndex + 1) % sp.sequence.size()];
-            std::string nextDisplaySym = (nextSym == '/') ? "÷" : (nextSym == '*' ? "x" : std::string(1, nextSym));
-            int nextTurn = GetTurnsUntilNextSpawn();
+            // アイテムの色決定（宝石のようなリッチで深い色合い）
+            unsigned int itemCol, addCol, darkCol;
+            if (sp.currentSymbol == '+') {
+                itemCol = GetColor(200, 30, 50);  // ルビー（赤）
+                addCol = GetColor(255, 100, 100);
+                darkCol = GetColor(80, 10, 20);
+            }
+            else if (sp.currentSymbol == '-') {
+                itemCol = GetColor(30, 120, 220); // サファイア（青）
+                addCol = GetColor(100, 180, 255);
+                darkCol = GetColor(10, 30, 80);
+            }
+            else if (sp.currentSymbol == '*') {
+                itemCol = GetColor(40, 180, 60);  // エメラルド（緑）
+                addCol = GetColor(120, 255, 150);
+                darkCol = GetColor(15, 60, 20);
+            }
+            else {
+                itemCol = GetColor(180, 40, 200); // アメジスト（紫）
+                addCol = GetColor(220, 100, 255);
+                darkCol = GetColor(60, 10, 80);
+            }
 
-            int color = sp.isAvailable ? GetColor(120, 120, 120) : GetColor(100, 200, 255);
-            DrawFormatString((int)pos.x - 36, (int)pos.y + 24, color, "Next:%s(%d)", nextDisplaySym.c_str(), nextTurn);
+            // ① 盤面に漏れ出すエネルギー（オーラ）
+            for (int i = 0; i < 2; ++i) {
+                SetDrawBlendMode(DX_BLENDMODE_ALPHA, 60 - i * 20);
+                DrawCircleAA(drawX, drawY, 34.0f + i * 8.0f + pulse, 64, itemCol, TRUE);
+            }
+            SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+
+            // ② アイテム本体（多層クリスタル構造）
+            DrawCircleAA(drawX, drawY, 28.0f, 64, darkCol, TRUE); // 外郭の暗い色
+            DrawCircleAA(drawX, drawY, 24.0f, 64, itemCol, TRUE); // メインカラー
+
+            // ③ 加算合成で内部からの発光感
+            SetDrawBlendMode(DX_BLENDMODE_ADD, 150);
+            DrawCircleAA(drawX, drawY, 18.0f, 64, addCol, TRUE);
+            SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+
+            // ④ 盤面にはめ込まれているような硬質なリング
+            DrawCircleAA(drawX, drawY, 26.0f, 64, GetColor(200, 220, 255), FALSE, 2.0f);
+
+            // ⑤ 強い光沢
+            SetDrawBlendMode(DX_BLENDMODE_ALPHA, 180);
+            DrawCircleAA(drawX - 8.0f, drawY - 8.0f, 6.0f, 32, GetColor(255, 255, 255), TRUE);
+            SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+
+            // ⑥ 記号（ユニットに合わせて「白文字＋暗い影」に変更）
+            SetFontSize(38);
+            char symStr[2] = { sp.currentSymbol, '\0' };
+            int tw = GetDrawStringWidth(symStr, 1);
+
+            // 彫り込まれている感のあるドロップシャドウ
+            DrawString((int)drawX - tw / 2 + 2, (int)drawY - 18 + 2, symStr, GetColor(20, 20, 30));
+            // 本体文字（発光する白）
+            DrawString((int)drawX - tw / 2, (int)drawY - 18, symStr, GetColor(255, 255, 255));
         }
     }
 

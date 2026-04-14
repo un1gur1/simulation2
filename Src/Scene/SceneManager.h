@@ -6,54 +6,45 @@ namespace App {
 
     class Loading;
     class Fader;
-    class GameScene; 
-	class TitleScene;
-	class ResultScene;
+    class GameScene;
+    class TitleScene;
+    class ResultScene;
 
     class SceneManager
     {
     public:
-        // シーン管理用
-        enum class SCENE_ID
-        {
-            NONE,
-            TITLE,
-            GAME,
-            RESULT,
-            
-        };
+        enum class SCENE_ID { NONE, TITLE, GAME, RESULT };
 
     public:
-        // シングルトン（生成・取得・削除）
         static void CreateInstance() { if (instance_ == nullptr) { instance_ = new SceneManager(); } }
         static SceneManager* GetInstance() { return instance_; }
         static void DeleteInstance() { if (instance_ != nullptr) { delete instance_; instance_ = nullptr; } }
 
-        // ライフサイクル
-        void Init();        // 初期化
-        void Init3D();      // 3D の初期化（必要なら実装）
-        void Update();      // 更新
-        void Draw();        // 描画
-        void Delete();      // リソースの破棄
-
-        // 状態遷移
+        void Init();
+        void Init3D();
+        void Update();
+        void Draw();
+        void Delete();
         void ChangeScene(SCENE_ID nextId);
-
-        // シーンIDの取得
         SCENE_ID GetSceneID() const { return sceneId_; }
 
-        // ゲーム終了
         void GameEnd() { isGameEnd_ = true; }
         bool GetGameEnd() const { return isGameEnd_; }
 
-    private:
-        // 実際の切り替えロジック（内部）
-        void PerformSceneChange();
+        // ★修正：スコア(501など)を受け取れるように引数を追加
+        void SetGameSettings(int players, int mode, int zeroOneScore = 501) {
+            playerCount_ = players;
+            gameMode_ = mode;
+            zeroOneScore_ = zeroOneScore; // ★追加
+        }
+        int GetPlayerCount() const { return playerCount_; }
+        int GetGameMode() const { return gameMode_; }
+        int GetZeroOneScore() const { return zeroOneScore_; } // ★追加
 
-        // シングルトン本体
+    private:
+        void PerformSceneChange();
         static SceneManager* instance_;
 
-        // 各種メンバ（設計に合わせて末尾アンダースコア）
         SceneBase* scene_;
         Loading* load_;
         Fader* fader_;
@@ -64,14 +55,13 @@ namespace App {
         bool isChanging_;
         bool isGameEnd_;
 
-        
+        int playerCount_;
+        int gameMode_;
+        int zeroOneScore_; // ★追加：ゼロワンの初期スコア
 
     private:
-        // 外部での生成を禁止
         SceneManager();
         ~SceneManager();
-
-        // コピー・ムーブ禁止
         SceneManager(const SceneManager&) = delete;
         SceneManager& operator=(const SceneManager&) = delete;
         SceneManager(SceneManager&&) = delete;

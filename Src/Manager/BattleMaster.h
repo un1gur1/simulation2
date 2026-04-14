@@ -11,30 +11,58 @@
 
 namespace App {
 
+    // ★追加：分数を完璧に計算・約分するオリジナル構造体
+    struct Fraction {
+        long long n; // 分子 (Numerator)
+        long long d; // 分母 (Denominator)
+
+        Fraction(long long num = 0, long long den = 1) : n(num), d(den) {
+            if (d == 0) { d = 1; n = 0; } // 0割り防止
+            if (d < 0) { n = -n; d = -d; }
+            long long a = std::abs(n), b = d;
+            while (b != 0) { long long t = b; b = a % b; a = t; }
+            if (a != 0) { n /= a; d /= a; } // 最大公約数で約分
+        }
+
+        Fraction operator+(const Fraction& o) const { return Fraction(n * o.d + o.n * d, d * o.d); }
+        Fraction operator-(const Fraction& o) const { return Fraction(n * o.d - o.n * d, d * o.d); }
+        Fraction operator*(const Fraction& o) const { return Fraction(n * o.n, d * o.d); }
+        Fraction operator/(const Fraction& o) const { return Fraction(n * o.d, d * o.n); }
+
+        bool operator==(const Fraction& o) const { return n == o.n && d == o.d; }
+        bool operator>(const Fraction& o) const { return n * o.d > o.n * d; }
+        bool operator<(const Fraction& o) const { return n * o.d < o.n * d; }
+
+        std::string ToString() const {
+            if (d == 1) return std::to_string(n);
+            long long whole = n / d;
+            long long rem = std::abs(n % d);
+            if (whole == 0) {
+                return (n < 0 ? "-" : "") + std::to_string(rem) + "/" + std::to_string(d);
+            }
+            return std::to_string(whole) + (n < 0 ? " - " : " + ") + std::to_string(rem) + "/" + std::to_string(d);
+        }
+    };
+
     class BattleMaster {
     public:
-        // ★修正：1Pと2Pのターンでフェーズを分ける
-        enum class Phase {
-            P1_Move,
-            P1_Action,
-            P2_Move,
-            P2_Action,
-            Result
-        };
-
-        // ★追加：対人戦とNPC戦のモード選択
-        enum class GameMode {
-            VS_CPU,
-            VS_PLAYER
-        };
+        enum class Phase { P1_Move, P1_Action, P2_Move, P2_Action, Result };
+        enum class GameMode { VS_CPU, VS_PLAYER };
+        enum class RuleMode { CLASSIC, ZERO_ONE };
 
     private:
         Phase    m_currentPhase;
-        GameMode m_gameMode; // モード保持用
+        GameMode m_gameMode;
+        RuleMode m_ruleMode;
         MapGrid  m_mapGrid;
 
-        std::unique_ptr<Player> m_player; // 1P
-        std::unique_ptr<Enemy>  m_enemy;  // 2P (CPU または 人間)
+        std::unique_ptr<Player> m_player;
+        std::unique_ptr<Enemy>  m_enemy;
+
+        // ★修正：スコアを分数(Fraction)として持つ！
+        Fraction m_p1ZeroOneScore;
+        Fraction m_p2ZeroOneScore;
+        int m_targetScore; // ★追加：目標スコア (501など)
 
         bool       m_isPlayerSelected;
         IntVector2 m_hoverGrid;
@@ -44,14 +72,17 @@ namespace App {
         void AddLog(const std::string& message);
 
         bool CanMove(int number, char op, IntVector2 start, IntVector2 target, int& outCost) const;
-        void ApplyBattleResult(UnitBase& unit, int resultNum);
+        void ApplyBattleResult(UnitBase& unit, Fraction resultFrac, int intRes); // 引数変更
+
+        bool Is1PTurn() const;
+        UnitBase* GetActiveUnit() const;
+        UnitBase* GetTargetUnit() const;
 
     public:
         BattleMaster();
         ~BattleMaster() = default;
 
-        // ★修正：初期化時にモードを受け取る（デフォルトはVS_CPU）
-        void Init(GameMode mode = GameMode::VS_CPU);
+        void Init();
         void Update();
         void Draw();
 
@@ -59,7 +90,6 @@ namespace App {
         bool IsPlayerWin() const;
 
     private:
-        // ★追加：入力処理の共通化
         void HandleMoveInput(UnitBase& activeUnit, Phase nextPhase);
         void HandleActionInput(UnitBase& actor, UnitBase& targetUnit);
 
