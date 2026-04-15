@@ -67,16 +67,25 @@ namespace App {
         bool       m_isPlayerSelected;
         IntVector2 m_hoverGrid;
         bool       m_enemyAIStarted;
+        bool       m_playerAIStarted; // Åö í«â¡
+
+        bool m_is1P_NPC;
+        bool m_is2P_NPC;
 
         std::vector<std::string> m_actionLog;
         void AddLog(const std::string& message);
 
         bool CanMove(int number, char op, IntVector2 start, IntVector2 target, int& outCost) const;
-        void ApplyBattleResult(UnitBase& unit, Fraction resultFrac, int intRes); // à¯êîïœçX
+        void ApplyBattleResult(UnitBase& unit, Fraction resultFrac, int intRes, char op);
 
         bool Is1PTurn() const;
         UnitBase* GetActiveUnit() const;
         UnitBase* GetTargetUnit() const;
+
+        int  EvaluateBoard(UnitBase& me, int myVirtualNumber, UnitBase& enemy, IntVector2 targetPos, bool is1P);
+        void ExecuteAI(UnitBase* me, UnitBase* opp, bool is1P);
+        void PerformAIMove(UnitBase* me, IntVector2 bestTarget, int selectedCost, bool is1P);
+        void ExecuteAIAction(UnitBase* me, UnitBase* opp, bool is1P);
 
     public:
         BattleMaster();
@@ -95,6 +104,10 @@ namespace App {
 
         bool CheckButtonClick(int x, int y, int w, int h, Vector2 mousePos);
         void ExecuteBattle(UnitBase& attacker, UnitBase& defender, UnitBase& target);
+        void PerformEnemyMove(IntVector2 bestTarget, int selectedCost);
+
+        int EvaluateBoard(UnitBase& me, int myVirtualNumber, UnitBase& enemy, IntVector2 targetPos);
+
         void ExecuteEnemyAI();
         void DrawMovableArea();
         void DrawEnemyDangerArea();

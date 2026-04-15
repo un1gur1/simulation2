@@ -11,7 +11,12 @@ namespace App {
         : scene_(nullptr), load_(nullptr), fader_(nullptr)
         , sceneId_(SCENE_ID::NONE), nextSceneId_(SCENE_ID::NONE)
         , isChanging_(false), isGameEnd_(false)
-        , playerCount_(1), gameMode_(0), zeroOneScore_(501) // ★追加
+        , playerCount_(1), gameMode_(0), zeroOneScore_(501)
+        // ★追加：変数の初期化（デフォルトは1P人間・2P敵のいつもの設定）
+        , is1P_NPC_(false), is2P_NPC_(true)
+        , p1StartNum_(5), p2StartNum_(7)
+        , p1StartX_(1), p1StartY_(1)
+        , p2StartX_(7), p2StartY_(7)
     {
     }
 
@@ -29,7 +34,17 @@ namespace App {
 
         playerCount_ = 1;
         gameMode_ = 0;
-        zeroOneScore_ = 501; // ★追加
+        zeroOneScore_ = 501;
+
+        // ★追加：タイトルに戻った際に初期値にリセット
+        is1P_NPC_ = false;
+        is2P_NPC_ = true;
+        p1StartNum_ = 5;
+        p2StartNum_ = 7;
+        p1StartX_ = 1;
+        p1StartY_ = 1;
+        p2StartX_ = 7;
+        p2StartY_ = 7;
 
         ChangeScene(SCENE_ID::TITLE);
     }

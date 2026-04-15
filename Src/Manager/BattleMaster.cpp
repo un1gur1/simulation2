@@ -21,6 +21,9 @@ namespace App {
         , m_isPlayerSelected(false)
         , m_hoverGrid(-1, -1)
         , m_enemyAIStarted(false)
+        , m_playerAIStarted(false)
+        , m_is1P_NPC(false)
+        , m_is2P_NPC(true)
     {
     }
 
@@ -52,8 +55,17 @@ namespace App {
         m_p1ZeroOneScore = Fraction(0, 1);
         m_p2ZeroOneScore = Fraction(0, 1);
 
-        m_player = std::make_unique<Player>(IntVector2{ 1, 1 }, m_mapGrid.GetCellCenter(1, 1), 5, 5, 5);
-        m_enemy = std::make_unique<Enemy>(IntVector2{ 7, 7 }, m_mapGrid.GetCellCenter(7, 7), 7, 5, 5);
+        // ★ SceneManager から初期設定を受け取る
+        m_is1P_NPC = sm->Is1PNPC();
+        m_is2P_NPC = sm->Is2PNPC();
+        IntVector2 p1StartPos{ sm->Get1PStartX(), sm->Get1PStartY() };
+        IntVector2 p2StartPos{ sm->Get2PStartX(), sm->Get2PStartY() };
+        int p1Num = sm->Get1PStartNum();
+        int p2Num = sm->Get2PStartNum();
+
+        // ★ カスタムされた初期位置と数字でユニットを生成
+        m_player = std::make_unique<Player>(p1StartPos, m_mapGrid.GetCellCenter(p1StartPos.x, p1StartPos.y), p1Num, 5, 5);
+        m_enemy = std::make_unique<Enemy>(p2StartPos, m_mapGrid.GetCellCenter(p2StartPos.x, p2StartPos.y), p2Num, 5, 5);
 
         m_player->SetOp('\0');
         m_enemy->SetOp('\0');
@@ -61,12 +73,14 @@ namespace App {
         m_currentPhase = Phase::P1_Move;
         m_isPlayerSelected = false;
         m_enemyAIStarted = false;
+        m_playerAIStarted = false;
 
         m_actionLog.clear();
-        std::string pModeStr = (m_gameMode == GameMode::VS_CPU) ? "NPC対戦" : "対人対戦";
         std::string rModeStr = (m_ruleMode == RuleMode::CLASSIC) ? "クラシック" : "ゼロワン";
+        std::string p1Type = m_is1P_NPC ? "COM" : "PLAYER";
+        std::string p2Type = m_is2P_NPC ? "COM" : "PLAYER";
 
-        AddLog(">>> バトル開始！ [" + pModeStr + " / " + rModeStr + "]");
+        AddLog(">>> バトル開始！ [1P:" + p1Type + " vs 2P:" + p2Type + " / " + rModeStr + "]");
 
         if (m_ruleMode == RuleMode::ZERO_ONE) {
             AddLog(">>> 目標：相手よりはやくスコアを【 " + std::to_string(m_targetScore) + " 】にしよう！");
@@ -78,10 +92,18 @@ namespace App {
 
     bool BattleMaster::CanMove(int number, char op, IntVector2 start, IntVector2 target, int& outCost) const {
         if (start == target) return false;
+
+        UnitBase* u = nullptr;
+        if (m_player && m_player->GetGridPos() == start) u = m_player.get();
+        else if (m_enemy && m_enemy->GetGridPos() == start) u = m_enemy.get();
+
+        if (u && u->HasWarpNode(target)) {
+            outCost = 1;
+            return true;
+        }
+
         int dx = std::abs(target.x - start.x);
         int dy = std::abs(target.y - start.y);
-
-        // ★数値が小さいほど移動力が高い（逆転のパラドックス）
         int maxDist = 3 - ((number - 1) % 3);
 
         bool isValidDirection = false;
@@ -108,15 +130,16 @@ namespace App {
     void BattleMaster::HandleMoveInput(UnitBase& activeUnit, Phase nextPhase) {
         if (activeUnit.IsMoving()) return;
         auto& input = InputManager::GetInstance();
+
         if (input.IsMouseLeftTrg()) {
             IntVector2 pos = activeUnit.GetGridPos();
+
             if (!m_isPlayerSelected) {
                 if (m_hoverGrid == pos) m_isPlayerSelected = true;
             }
             else {
                 if (m_hoverGrid == pos) {
                     activeUnit.AddNumber(-1);
-                    AddLog("【待機】 その場で数字の調整を行った (コスト: -1)");
                     m_isPlayerSelected = false;
                     m_currentPhase = nextPhase;
                 }
@@ -124,21 +147,31 @@ namespace App {
                     int cost = 0;
                     if (CanMove(activeUnit.GetNumber(), activeUnit.GetOp(), pos, m_hoverGrid, cost)) {
                         activeUnit.AddNumber(-cost);
-                        std::string name = (&activeUnit == m_player.get()) ? "1P" : (m_gameMode == GameMode::VS_CPU ? "敵" : "2P");
-                        AddLog("【移動】 " + name + " (コスト: -" + std::to_string(cost) + ")");
                         std::queue<Vector2> autoPath;
-                        int stepX = (m_hoverGrid.x > pos.x) ? 1 : (m_hoverGrid.x < pos.x) ? -1 : 0;
-                        int stepY = (m_hoverGrid.y > pos.y) ? 1 : (m_hoverGrid.y < pos.y) ? -1 : 0;
-                        IntVector2 curr = pos;
-                        while (curr != m_hoverGrid) {
-                            curr.x += stepX; curr.y += stepY;
-                            autoPath.push(m_mapGrid.GetCellCenter(curr.x, curr.y));
+
+                        if (activeUnit.HasWarpNode(m_hoverGrid)) {
+                            autoPath.push(m_mapGrid.GetCellCenter(m_hoverGrid.x, m_hoverGrid.y));
+                            AddLog("【跳躍】 陣地へ転送完了。");
                         }
+                        else {
+                            int stepX = (m_hoverGrid.x > pos.x) ? 1 : (m_hoverGrid.x < pos.x) ? -1 : 0;
+                            int stepY = (m_hoverGrid.y > pos.y) ? 1 : (m_hoverGrid.y < pos.y) ? -1 : 0;
+                            IntVector2 curr = pos;
+                            int safetyCounter = 0;
+                            while (curr != m_hoverGrid && safetyCounter < 20) {
+                                curr.x += stepX; curr.y += stepY;
+                                autoPath.push(m_mapGrid.GetCellCenter(curr.x, curr.y));
+                                safetyCounter++;
+                            }
+                        }
+
                         activeUnit.StartMove(m_hoverGrid, autoPath);
                         m_isPlayerSelected = false;
                         m_currentPhase = nextPhase;
                     }
-                    else { m_isPlayerSelected = false; }
+                    else {
+                        m_isPlayerSelected = false;
+                    }
                 }
             }
         }
@@ -150,7 +183,7 @@ namespace App {
         char pickedItem = m_mapGrid.PickUpItem(pos.x, pos.y);
         if (pickedItem != '\0') {
             actor.SetOp(pickedItem);
-            std::string name = (&actor == m_player.get()) ? "1P" : (m_gameMode == GameMode::VS_CPU ? "敵" : "2P");
+            std::string name = (&actor == m_player.get()) ? "1P" : "2P";
             AddLog("【取得】 " + name + "が [" + std::string(1, pickedItem) + "] を取得！");
         }
         IntVector2 targetPos = targetUnit.GetGridPos();
@@ -188,6 +221,47 @@ namespace App {
         }
     }
 
+    void BattleMaster::ExecuteAIAction(UnitBase* me, UnitBase* opp, bool is1P) {
+        if (!me || !opp || me->IsMoving()) return;
+
+        IntVector2 myP = me->GetGridPos();
+        char pickedItem = m_mapGrid.PickUpItem(myP.x, myP.y);
+        std::string myName = is1P ? "1P" : "2P";
+
+        if (pickedItem != '\0') {
+            me->SetOp(pickedItem);
+            AddLog("【取得】 " + myName + " が演算子 [" + std::string(1, pickedItem) + "] を取得");
+        }
+
+        IntVector2 oppP = opp->GetGridPos();
+        if (std::abs(myP.x - oppP.x) + std::abs(myP.y - oppP.y) == 1) {
+            char myOp = me->GetOp();
+            if (myOp != '\0') {
+                if (m_ruleMode == RuleMode::ZERO_ONE) {
+                    ExecuteBattle(*me, *opp, *me);
+                }
+                else {
+                    int aNum = me->GetNumber(); int tNum = opp->GetNumber();
+                    int res = 0;
+                    if (myOp == '+') res = aNum + tNum; else if (myOp == '-') res = aNum - tNum;
+                    else if (myOp == '*') res = aNum * tNum; else if (myOp == '/') res = (tNum != 0) ? aNum / tNum : 0;
+
+                    if (res > 9) ExecuteBattle(*me, *opp, *me);
+                    else ExecuteBattle(*me, *opp, *opp);
+                }
+            }
+            else {
+                AddLog("【待機】 " + myName + " は演算子がないため様子を見ている");
+            }
+        }
+
+        if (!is1P) m_mapGrid.UpdateTurn();
+        m_currentPhase = is1P ? Phase::P2_Move : Phase::P1_Move;
+
+        if (is1P) m_playerAIStarted = false;
+        else m_enemyAIStarted = false;
+    }
+
     void BattleMaster::Update() {
         if (m_ruleMode == RuleMode::ZERO_ONE) {
             if (m_player && m_player->GetStocks() < m_player->GetMaxStocks()) {
@@ -204,106 +278,359 @@ namespace App {
         if (m_enemy)  m_enemy->Update();
         m_hoverGrid = m_mapGrid.ScreenToGrid(input.GetMousePos());
 
+        // ★ 各プレイヤーが NPC かどうかで処理を分岐
         switch (m_currentPhase) {
-        case Phase::P1_Move: HandleMoveInput(*m_player, Phase::P1_Action); break;
-        case Phase::P1_Action: HandleActionInput(*m_player, *m_enemy); break;
+        case Phase::P1_Move:
+            if (m_is1P_NPC) {
+                if (!m_playerAIStarted) { ExecuteAI(m_player.get(), m_enemy.get(), true); m_playerAIStarted = true; }
+                else if (m_player && !m_player->IsMoving()) { m_currentPhase = Phase::P1_Action; }
+            }
+            else {
+                HandleMoveInput(*m_player, Phase::P1_Action);
+            }
+            break;
+        case Phase::P1_Action:
+            if (m_is1P_NPC) {
+                ExecuteAIAction(m_player.get(), m_enemy.get(), true);
+            }
+            else {
+                HandleActionInput(*m_player, *m_enemy);
+            }
+            break;
         case Phase::P2_Move:
-            if (m_gameMode == GameMode::VS_CPU) {
-                if (!m_enemyAIStarted) { ExecuteEnemyAI(); m_enemyAIStarted = true; }
+            if (m_is2P_NPC) {
+                if (!m_enemyAIStarted) { ExecuteAI(m_enemy.get(), m_player.get(), false); m_enemyAIStarted = true; }
                 else if (m_enemy && !m_enemy->IsMoving()) { m_currentPhase = Phase::P2_Action; }
             }
-            else { HandleMoveInput(*m_enemy, Phase::P2_Action); }
+            else {
+                HandleMoveInput(*m_enemy, Phase::P2_Action);
+            }
             break;
         case Phase::P2_Action:
-            if (m_gameMode == GameMode::VS_CPU) {
-                IntVector2 eP = m_enemy->GetGridPos();
-                char pickedItem = m_mapGrid.PickUpItem(eP.x, eP.y);
-                if (pickedItem != '\0') {
-                    m_enemy->SetOp(pickedItem);
-                    AddLog("【取得】 敵が演算子 [" + std::string(1, pickedItem) + "] を取得");
-                }
-                IntVector2 pP = m_player->GetGridPos();
-                if (std::abs(pP.x - eP.x) + std::abs(pP.y - eP.y) == 1) {
-                    char eOp = m_enemy->GetOp();
-                    if (eOp != '\0') {
-                        if (m_ruleMode == RuleMode::ZERO_ONE) {
-                            ExecuteBattle(*m_enemy, *m_player, *m_enemy);
-                        }
-                        else {
-                            int eNum = m_enemy->GetNumber();
-                            int pNum = m_player->GetNumber();
-                            int res = 0;
-                            if (eOp == '+') res = eNum + pNum; else if (eOp == '-') res = eNum - pNum; else if (eOp == '*') res = eNum * pNum; else if (eOp == '/') res = (pNum != 0) ? eNum / pNum : 0;
-                            if (res > 9) ExecuteBattle(*m_enemy, *m_player, *m_enemy);
-                            else ExecuteBattle(*m_enemy, *m_player, *m_player);
-                        }
-                    }
-                    else { AddLog("【待機】 敵は演算子がないため様子を見ている"); }
-                }
-                m_mapGrid.UpdateTurn();
-                m_currentPhase = Phase::P1_Move;
-                m_enemyAIStarted = false;
+            if (m_is2P_NPC) {
+                ExecuteAIAction(m_enemy.get(), m_player.get(), false);
             }
-            else { HandleActionInput(*m_enemy, *m_player); }
+            else {
+                HandleActionInput(*m_enemy, *m_player);
+            }
             break;
         }
     }
 
-    void BattleMaster::ExecuteEnemyAI() {
-        if (!m_enemy || m_enemy->GetStocks() <= 0 || !m_player) {
-            m_mapGrid.UpdateTurn(); m_currentPhase = Phase::P1_Move; return;
+    void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int selectedCost, bool is1P) {
+        if (!me) return;
+
+        IntVector2 ePos = me->GetGridPos();
+        std::queue<Vector2> screenPath;
+        std::string myName = is1P ? "1P" : "2P";
+
+        if (me->HasWarpNode(bestTarget)) {
+            AddLog("【行動】 " + myName + " が陣地へワープ！ (コスト: -1)");
         }
-        IntVector2 ePos = m_enemy->GetGridPos();
-        IntVector2 pPos = m_player->GetGridPos();
-        int eNum = m_enemy->GetNumber();
-        char eOp = m_enemy->GetOp();
-
-        IntVector2 bestTarget = ePos;
-        int maxScore = -999999;
-        int bestCost = 1;
-
-        for (int x = 0; x < m_mapGrid.GetWidth(); ++x) {
-            for (int y = 0; y < m_mapGrid.GetHeight(); ++y) {
-                IntVector2 target{ x, y };
-                if (target == pPos) continue;
-                int cost = 0;
-                bool canMove = false;
-                if (target == ePos) { canMove = true; cost = 1; }
-                else { canMove = CanMove(eNum, eOp, ePos, target, cost); }
-
-                if (canMove) {
-                    int score = 0;
-                    int distToPlayer = std::abs(pPos.x - target.x) + std::abs(pPos.y - target.y);
-                    if (distToPlayer == 1) score += 1000; else score -= distToPlayer * 10;
-                    if (target != ePos && m_mapGrid.GetItemAt(target.x, target.y) != '\0') score += 50;
-                    if (target == ePos) score += 5;
-                    if (score > maxScore) { maxScore = score; bestTarget = target; bestCost = cost; }
-                }
-            }
+        else if (bestTarget == ePos) {
+            AddLog("【待機】 " + myName + " がその場で数字を調整 (コスト: -1)");
         }
-        if (bestTarget != ePos) {
-            AddLog("【行動】 敵 (コスト: -" + std::to_string(bestCost) + ")");
-            std::queue<Vector2> screenPath;
+        else {
+            AddLog("【行動】 " + myName + " が進軍 (コスト: -" + std::to_string(selectedCost) + ")");
+        }
+
+        if (me->HasWarpNode(bestTarget) || bestTarget == ePos) {
+            screenPath.push(m_mapGrid.GetCellCenter(bestTarget.x, bestTarget.y));
+        }
+        else {
             int stepX = (bestTarget.x > ePos.x) ? 1 : (bestTarget.x < ePos.x) ? -1 : 0;
             int stepY = (bestTarget.y > ePos.y) ? 1 : (bestTarget.y < ePos.y) ? -1 : 0;
             IntVector2 curr = ePos;
-            while (curr != bestTarget) {
+            int safety = 0;
+            while (curr != bestTarget && safety < 20) {
                 curr.x += stepX; curr.y += stepY;
                 screenPath.push(m_mapGrid.GetCellCenter(curr.x, curr.y));
+                safety++;
             }
-            m_enemy->AddNumber(-bestCost);
-            m_enemy->StartMove(bestTarget, screenPath);
         }
+
+        me->AddNumber(-selectedCost);
+        me->StartMove(bestTarget, screenPath);
+
+        if (is1P) m_playerAIStarted = true;
+        else m_enemyAIStarted = true;
+    }
+
+    // 盤面の状態を評価する関数（AIの「賢さ」の心臓部）
+    int BattleMaster::EvaluateBoard(UnitBase& me, int myVirtualNumber, UnitBase& enemy, IntVector2 targetPos, bool is1P) {
+        int score = 0;
+        char myOp = me.GetOp();
+        IntVector2 ePos = enemy.GetGridPos();
+        bool canAttack = (std::abs(targetPos.x - ePos.x) + std::abs(targetPos.y - ePos.y) == 1);
+
+        // ====================================================
+        // 【ゼロワンモード】の評価ロジック
+        // ====================================================
+        if (m_ruleMode == RuleMode::ZERO_ONE) {
+            Fraction goal(m_targetScore);
+            Fraction myScore = is1P ? m_p1ZeroOneScore : m_p2ZeroOneScore;
+            Fraction enemyScore = is1P ? m_p2ZeroOneScore : m_p1ZeroOneScore;
+
+            long long myDist = std::abs((goal - myScore).n / (goal - myScore).d);
+            long long enemyDist = std::abs((goal - enemyScore).n / (goal - enemyScore).d);
+
+            if (myOp == '\0') {
+                char itemHere = m_mapGrid.GetItemAt(targetPos.x, targetPos.y);
+                if (itemHere != '\0') {
+                    score += 5000;
+                    if (myDist <= 5) {
+                        if (itemHere == '-') score += 3000;
+                        if (itemHere == '+') score -= 2000;
+                    }
+                }
+                else {
+                    int minDist = 999;
+                    for (int ix = 0; ix < 9; ++ix) {
+                        for (int iy = 0; iy < 9; ++iy) {
+                            char item = m_mapGrid.GetItemAt(ix, iy);
+                            if (item != '\0') {
+                                int dist = std::abs(targetPos.x - ix) + std::abs(targetPos.y - iy);
+                                if (myDist <= 5) {
+                                    if (item == '-') dist -= 5;
+                                    if (item == '+') dist += 5;
+                                }
+                                if (dist < minDist) minDist = dist;
+                            }
+                        }
+                    }
+                    score += (100 - minDist) * 20;
+                }
+            }
+            else {
+                if (canAttack) {
+                    int eNum = enemy.GetNumber();
+
+                    if (myOp == '/') {
+                        int wx = myVirtualNumber - 1;
+                        int wy = 9 - eNum;
+                        IntVector2 nodePos{ wx, wy };
+
+                        if (wy >= 0 && wy <= 8 && wx >= 0 && wx <= 8) {
+                            if (!me.HasWarpNode(nodePos)) {
+                                score += 1500;
+                                if (myDist > 100) score += 1000;
+                            }
+                            else {
+                                score -= 500;
+                            }
+                        }
+                    }
+                    else {
+                        Fraction resFrac;
+                        if (myOp == '+') resFrac = Fraction(myVirtualNumber + eNum);
+                        else if (myOp == '-') resFrac = Fraction(myVirtualNumber - eNum);
+                        else if (myOp == '*') resFrac = Fraction(myVirtualNumber * eNum);
+
+                        Fraction predicted = myScore + resFrac;
+
+                        if (predicted == goal) return 1000000; // ピッタリ到達！
+
+                        if (predicted > goal) {
+                            Fraction excess = predicted - goal;
+                            predicted = goal - excess;
+                        }
+
+                        long long predictedDist = std::abs((goal - predicted).n / (goal - predicted).d);
+                        long long progress = myDist - predictedDist;
+
+                        if (progress > 0) {
+                            score += (int)progress * 50;
+                            score += (1000 - (int)predictedDist) * 2;
+                        }
+                        else {
+                            if (myDist <= 3) score += 2000;
+                            else score -= (int)std::abs(progress) * 50;
+                        }
+                    }
+                }
+                else {
+                    int distToEnemy = std::abs(targetPos.x - ePos.x) + std::abs(targetPos.y - ePos.y);
+                    score += (100 - distToEnemy) * 15;
+                }
+            }
+
+            if (canAttack) {
+                if (myOp == '\0' && enemy.GetOp() != '\0') score -= 4000;
+                if (myOp != '\0' && enemyDist <= 27) score += 800; // 妨害ボーナス
+            }
+        }
+        // ====================================================
+        // 【クラシックモード】の評価ロジック（★ここから新規）
+        // ====================================================
         else {
-            m_enemy->AddNumber(-bestCost);
-            AddLog("【待機】 敵がその場で数字の調整を行った (コスト: -1)");
+            // 基本的なステータス評価（残機は圧倒的に重要）
+            score += me.GetStocks() * 10000;
+            score -= enemy.GetStocks() * 10000;
+
+            // 自分の体力がヤバい（次のターン死ぬかも）なら、アイテムより自己防衛優先
+            if (myVirtualNumber <= 2) {
+                score -= 1000; // 体力が低いこと自体がマイナス
+            }
+
+            if (myOp == '\0') {
+                // アイテムを持っていない場合は取りに行く
+                char itemHere = m_mapGrid.GetItemAt(targetPos.x, targetPos.y);
+                if (itemHere != '\0') {
+                    score += 5000;
+                    // 引き算は攻撃の要なので高評価
+                    if (itemHere == '-') score += 2000;
+                }
+                else {
+                    int minDist = 999;
+                    for (int ix = 0; ix < 9; ++ix) {
+                        for (int iy = 0; iy < 9; ++iy) {
+                            char item = m_mapGrid.GetItemAt(ix, iy);
+                            if (item != '\0') {
+                                int dist = std::abs(targetPos.x - ix) + std::abs(targetPos.y - iy);
+                                if (item == '-') dist -= 2; // マイナスには引き寄せられる
+                                if (dist < minDist) minDist = dist;
+                            }
+                        }
+                    }
+                    score += (100 - minDist) * 20;
+                }
+            }
+            else {
+                if (canAttack) {
+                    int eNum = enemy.GetNumber();
+
+                    if (myOp == '/') {
+                        // 割り算は陣地構築
+                        int wx = myVirtualNumber - 1;
+                        int wy = 9 - eNum;
+                        IntVector2 nodePos{ wx, wy };
+
+                        if (wy >= 0 && wy <= 8 && wx >= 0 && wx <= 8) {
+                            if (!me.HasWarpNode(nodePos)) {
+                                score += 1500; // 陣地を作る
+                            }
+                            else {
+                                score -= 500; // 既にあるなら無駄
+                            }
+                        }
+                    }
+                    else {
+                        // 攻撃のシミュレーション
+                        int intRes = 0;
+                        if (myOp == '+') intRes = myVirtualNumber + eNum;
+                        else if (myOp == '-') intRes = myVirtualNumber - eNum;
+                        else if (myOp == '*') intRes = myVirtualNumber * eNum;
+
+                        // ★ 最優先：相手の残機を削れる（0以下）
+                        if (intRes <= 0) {
+                            return 1000000; // 問答無用でキルを取りに行く
+                        }
+                        // 相手を回復させてしまう（10以上）のは絶対に避ける
+                        else if (intRes > 9) {
+                            score -= 5000;
+                        }
+                        // 単なるダメージ（体力を減らす）
+                        else {
+                            int currentEnemyNum = enemy.GetNumber();
+                            int nextEnemyNum = ((intRes - 1) % 9 + 9) % 9 + 1; // サイクル後の数値
+
+                            if (nextEnemyNum < currentEnemyNum) {
+                                // 体力を減らせるなら加点（大きく減らすほど良い）
+                                score += (currentEnemyNum - nextEnemyNum) * 100;
+                            }
+                            else {
+                                // 体力が増えちゃうなら少し減点
+                                score -= 500;
+                            }
+                        }
+                    }
+                }
+                else {
+                    // 攻撃圏外なら相手に近づく
+                    int distToEnemy = std::abs(targetPos.x - ePos.x) + std::abs(targetPos.y - ePos.y);
+                    score += (100 - distToEnemy) * 15;
+                }
+            }
+
+            // 危険度：相手が武器を持っていて自分が持っていないなら逃げる
+            if (canAttack && myOp == '\0' && enemy.GetOp() != '\0') {
+                score -= 3000;
+            }
         }
+
+        // ====================================================
+        // 共通の盤面評価
+        // ====================================================
+        // 端っこペナルティ
+        if (targetPos.x == 0 || targetPos.x == 8 || targetPos.y == 0 || targetPos.y == 8) {
+            score -= 200;
+        }
+
+        return score;
+    }
+    void BattleMaster::ExecuteAI(UnitBase* me, UnitBase* opp, bool is1P) {
+        if (!me || me->GetStocks() <= 0) return;
+
+        IntVector2 ePos = me->GetGridPos();
+        int currentNum = me->GetNumber();
+        char currentOp = me->GetOp();
+
+        IntVector2 bestMove = ePos;
+        int bestScore = -9999999;
+        int selectedCost = 1;
+
+        for (int x = 0; x < 9; ++x) {
+            for (int y = 0; y < 9; ++y) {
+                IntVector2 target{ x, y };
+                int cost = 0;
+
+                bool canGo = (target == ePos);
+                if (!canGo) {
+                    canGo = CanMove(currentNum, currentOp, ePos, target, cost);
+                }
+                else {
+                    cost = 1;
+                }
+
+                if (canGo) {
+                    int virtualNextNum = currentNum - cost;
+                    while (virtualNextNum <= 0) virtualNextNum += 9;
+
+                    me->StartMove(target, std::queue<Vector2>());
+
+                    int eval = EvaluateBoard(*me, virtualNextNum, *opp, target, is1P);
+
+                    if (eval > bestScore) {
+                        bestScore = eval;
+                        bestMove = target;
+                        selectedCost = cost;
+                    }
+
+                    me->StartMove(ePos, std::queue<Vector2>());
+                }
+            }
+        }
+        PerformAIMove(me, bestMove, selectedCost, is1P);
     }
 
     void BattleMaster::ExecuteBattle(UnitBase& attacker, UnitBase& defender, UnitBase& target) {
         char aOp = attacker.GetOp();
         int aNum = attacker.GetNumber();
         int dNum = defender.GetNumber();
+
+        if (aOp == '/') {
+            if (dNum != 0) {
+                int wx = aNum - 1;
+                int wy = 9 - dNum;
+                IntVector2 nodePos{ wx, wy };
+
+                if (!attacker.HasWarpNode(nodePos)) {
+                    attacker.AddWarpNode(nodePos);
+                    std::string aName = (&attacker == m_player.get()) ? "1P" : "2P";
+                    AddLog("【陣地構築】 " + aName + " が座標 (" + std::to_string(aNum) + ", " + std::to_string(dNum) + ") に駅を設置！");
+                }
+            }
+        }
 
         Fraction resFrac;
         if (aOp == '+') resFrac = Fraction(aNum + dNum);
@@ -317,38 +644,47 @@ namespace App {
         else if (aOp == '*') intRes = aNum * dNum;
         else if (aOp == '/') intRes = (dNum != 0) ? aNum / dNum : 0;
 
-        std::string aName = (&attacker == m_player.get()) ? "1P" : (m_gameMode == GameMode::VS_CPU ? "敵" : "2P");
-        AddLog(">> " + aName + " の計算！ [ 結果: " + resFrac.ToString() + " ]");
+        std::string aName = (&attacker == m_player.get()) ? "1P" : "2P";
 
-        ApplyBattleResult(target, resFrac, intRes);
+        if (aOp != '/') {
+            AddLog(">> " + aName + " の計算！ [ 結果: " + resFrac.ToString() + " ]");
+        }
+
+        ApplyBattleResult(target, resFrac, intRes, aOp);
         attacker.SetOp('\0');
     }
 
-    void BattleMaster::ApplyBattleResult(UnitBase& unit, Fraction resultFrac, int intRes) {
-        std::string name = (&unit == m_player.get()) ? "1P" : (m_gameMode == GameMode::VS_CPU ? "敵" : "2P");
+    void BattleMaster::ApplyBattleResult(UnitBase& unit, Fraction resultFrac, int intRes, char op) {
+        std::string name = (&unit == m_player.get()) ? "1P" : "2P";
 
         if (m_ruleMode == RuleMode::ZERO_ONE) {
             Fraction& currentScore = (&unit == m_player.get()) ? m_p1ZeroOneScore : m_p2ZeroOneScore;
             Fraction goalScore(m_targetScore);
 
-            Fraction predictedScore = currentScore + resultFrac;
+            if (op != '/') {
+                Fraction predictedScore = currentScore + resultFrac;
 
-            if (predictedScore == goalScore) {
-                currentScore = predictedScore;
-                AddLog("【FINISH!!】 " + name + " が目標スコアに到達した！");
-            }
-            else if (predictedScore > goalScore) {
-                AddLog("【BUST!!】 " + name + " は目標をオーバーした！(無効)");
+                if (predictedScore == goalScore) {
+                    currentScore = predictedScore;
+                    AddLog("【FINISH!!】 " + name + " が目標スコアにピッタリ到達した！");
+                }
+                else if (predictedScore > goalScore) {
+                    Fraction excess = predictedScore - goalScore;
+                    currentScore = goalScore - excess;
+                    AddLog("【COUNT BACK】 " + name + " が目標を超過！ [" + currentScore.ToString() + "] まで戻りました。");
+                }
+                else {
+                    currentScore = predictedScore;
+                    AddLog("【HIT】 " + name + " のスコアが [" + currentScore.ToString() + "] に変化。");
+                }
             }
             else {
-                currentScore = predictedScore;
-                AddLog("【HIT】 " + name + " のスコアが [" + currentScore.ToString() + "] に変化。");
+                AddLog("【NODE】 スコア加算なし。座標系への干渉に成功。");
             }
 
             int cycleValue = (intRes - 1) % 9;
             if (cycleValue < 0) cycleValue += 9;
-            int remain = cycleValue + 1;
-            unit.SetNumber(remain);
+            unit.SetNumber(cycleValue + 1);
         }
         else {
             int cycleValue = (intRes - 1) % 9;
@@ -363,11 +699,7 @@ namespace App {
                 unit.AddStocks(1);
                 AddLog("【＋】 " + name + " の残機 +1！");
             }
-            else {
-                AddLog("【±】 " + name + " の数値に反映");
-            }
             unit.SetNumber(remain);
-            AddLog("【結果】 " + name + " の数値は [" + std::to_string(remain) + "] になった。");
         }
     }
 
@@ -418,9 +750,12 @@ namespace App {
                 int dummyCost = 0;
                 bool canMoveBase = CanMove(pNum, '\0', pPos, target, dummyCost);
                 bool canMoveCombined = CanMove(pNum, pOp, pPos, target, dummyCost);
-                if (canMoveCombined) {
-                    if (canMoveBase) DrawBox((int)center.x - 35, (int)center.y - 35, (int)center.x + 35, (int)center.y + 35, GetColor(100, 200, 255), TRUE);
-                    else DrawBox((int)center.x - 35, (int)center.y - 35, (int)center.x + 35, (int)center.y + 35, GetColor(255, 180, 50), TRUE);
+
+                bool isWarpNode = activeUnit->HasWarpNode(target);
+
+                if (canMoveCombined || isWarpNode) {
+                    unsigned int col = isWarpNode ? GetColor(255, 100, 255) : (canMoveBase ? GetColor(100, 200, 255) : GetColor(255, 180, 50));
+                    DrawBox((int)center.x - 35, (int)center.y - 35, (int)center.x + 35, (int)center.y + 35, col, TRUE);
                 }
             }
         }
@@ -441,9 +776,6 @@ namespace App {
 
 
     void BattleMaster::Draw() {
-        // ==========================================
-        // 1. ベース背景と左右パネル
-        // ==========================================
         DrawBox(0, 0, 1920, 1080, GetColor(10, 12, 18), TRUE);
 
         DrawBox(0, 70, 580, 1080, GetColor(18, 18, 22), TRUE);
@@ -454,25 +786,44 @@ namespace App {
         DrawBox(1340, 70, 1344, 1080, GetColor(30, 50, 180), TRUE);
         DrawLine(1344, 70, 1344, 1080, GetColor(100, 150, 255), 1);
 
-        // ==========================================
-        // 2. マップとユニットの描画
-        // ==========================================
         m_mapGrid.Draw();
+
+        auto drawWarpNodes = [&](UnitBase* unit, unsigned int baseCol, const char* label) {
+            if (!unit) return;
+            for (auto pos : unit->GetWarpNodes()) {
+                Vector2 center = m_mapGrid.GetCellCenter(pos.x, pos.y);
+                SetDrawBlendMode(DX_BLENDMODE_ADD, 150);
+                DrawCircleAA(center.x, center.y, 42.0f, 64, baseCol, FALSE, 3.0f);
+                SetDrawBlendMode(DX_BLENDMODE_ALPHA, 80);
+                DrawCircleAA(center.x, center.y, 35.0f, 64, baseCol, TRUE);
+                SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+
+                SetFontSize(18);
+                int tw = GetDrawStringWidth(label, (int)strlen(label));
+                DrawString((int)center.x - tw / 2, (int)center.y + 15, label, GetColor(255, 255, 255));
+            }
+            };
+
+        if (Is1PTurn()) {
+            drawWarpNodes(m_player.get(), GetColor(255, 165, 0), "1P ST.");
+        }
+        else {
+            drawWarpNodes(m_enemy.get(), GetColor(60, 150, 255), "2P ST.");
+        }
+
         DrawEnemyDangerArea();
         DrawMovableArea();
 
-        // アクティブユニットの点滅オーラ（★浮遊に同期させる修正！）
         UnitBase* blinkUnit = GetActiveUnit();
         if (blinkUnit && !blinkUnit->IsMoving()) {
             IntVector2 bPos = blinkUnit->GetGridPos();
             Vector2 bCenter = m_mapGrid.GetCellCenter(bPos.x, bPos.y);
 
             double time = GetNowCount() / 1000.0;
-            // ユニットごとの浮遊（bobbing）計算を適用
             float bobbing = (blinkUnit == m_player.get()) ? (float)(sin(time * 2.5) * 5.0) : (float)(sin(time * 2.0) * 4.0);
-            bCenter.y += bobbing; // ★影ではなく、本体の高さにオーラを合わせる
+            bCenter.y += bobbing;
 
-            int alpha = (int)(150 + 105 * sin(time * M_PI)); // 脈動
+            int alpha = (int)(150 + 105 * sin(time * M_PI));
             SetDrawBlendMode(DX_BLENDMODE_ALPHA, alpha);
             unsigned int auraCol = (blinkUnit == m_player.get()) ? GetColor(255, 220, 50) : GetColor(60, 150, 255);
 
@@ -487,16 +838,14 @@ namespace App {
         if (m_player) m_player->Draw();
         if (m_enemy)  m_enemy->Draw();
 
-        // ==========================================
-        // 3. 上部ヘッダー
-        // ==========================================
         unsigned int phaseCol;
         const char* phaseName;
 
-        if (m_currentPhase == Phase::P1_Move) { phaseCol = GetColor(180, 110, 0); phaseName = "1Pのターン (移動選択)"; }
-        else if (m_currentPhase == Phase::P1_Action) { phaseCol = GetColor(180, 110, 0); phaseName = "1Pのターン (行動選択)"; }
-        else if (m_currentPhase == Phase::P2_Move) { phaseCol = GetColor(30, 50, 120); phaseName = (m_gameMode == GameMode::VS_CPU) ? "敵のターン (思考中)" : "2Pのターン (移動選択)"; }
-        else { phaseCol = GetColor(30, 50, 120); phaseName = (m_gameMode == GameMode::VS_CPU) ? "敵のターン (思考中)" : "2Pのターン (行動選択)"; }
+        // ★ テキストの切り替え
+        if (m_currentPhase == Phase::P1_Move) { phaseCol = GetColor(180, 110, 0); phaseName = m_is1P_NPC ? "1Pのターン (思考中)" : "1Pのターン (移動選択)"; }
+        else if (m_currentPhase == Phase::P1_Action) { phaseCol = GetColor(180, 110, 0); phaseName = m_is1P_NPC ? "1Pのターン (思考中)" : "1Pのターン (行動選択)"; }
+        else if (m_currentPhase == Phase::P2_Move) { phaseCol = GetColor(30, 50, 120); phaseName = m_is2P_NPC ? "2Pのターン (思考中)" : "2Pのターン (移動選択)"; }
+        else { phaseCol = GetColor(30, 50, 120); phaseName = m_is2P_NPC ? "2Pのターン (思考中)" : "2Pのターン (行動選択)"; }
 
         DrawBox(0, 0, 1920, 70, phaseCol, TRUE);
         DrawLine(0, 70, 1920, 70, GetColor(255, 255, 255), 2);
@@ -506,9 +855,6 @@ namespace App {
         SetFontSize(24);
         DrawFormatString(800, 24, GetColor(220, 220, 220), "経過ターン: %d", m_mapGrid.GetTotalTurns());
 
-        // ==========================================
-        // 4. 左右のユニットステータスカード
-        // ==========================================
         Vector2 mousePos = InputManager::GetInstance().GetMousePos();
         UnitBase* activeActor = GetActiveUnit();
         UnitBase* activeTarget = GetTargetUnit();
@@ -525,7 +871,8 @@ namespace App {
             unsigned int baseCol = is1P ? GetColor(255, 165, 0) : GetColor(80, 120, 255);
             unsigned int darkBg = GetColor(14, 16, 20);
 
-            std::string headerName = is1P ? "1P PLAYER" : (m_gameMode == GameMode::VS_CPU ? "ENEMY" : "2P PLAYER");
+            // ★ 名前表示の切り替え
+            std::string headerName = is1P ? (m_is1P_NPC ? "1P (COM)" : "1P PLAYER") : (m_is2P_NPC ? "2P (COM)" : "2P PLAYER");
 
             SetFontSize(36);
             DrawString(x + 5, y + 5, headerName.c_str(), baseCol);
@@ -535,7 +882,6 @@ namespace App {
             DrawBox(x, scoreY, x + 500, scoreY + 200, darkBg, TRUE);
 
             if (m_ruleMode == RuleMode::ZERO_ONE) {
-                // ゼロワンモードのスコア表示
                 Fraction f = is1P ? m_p1ZeroOneScore : m_p2ZeroOneScore;
                 long long whole = f.n / f.d;
                 long long rem = std::abs(f.n % f.d);
@@ -562,13 +908,11 @@ namespace App {
                 DrawFormatString(x + 15, scoreY + 206, GetColor(255, 255, 255), "TARGET SCORE : %d", m_targetScore);
             }
             else {
-                // クラシックモードの自数値表示
                 SetFontSize(160);
                 DrawString(x + 24, scoreY + 14, std::to_string(unit->GetNumber()).c_str(), GetColor(0, 0, 0));
                 DrawFormatString(x + 20, scoreY + 10, GetColor(255, 255, 255), "%d", unit->GetNumber());
             }
 
-            // 予測ポップアップ（★クラシック対応）
             if (canAttack && hasOp) {
                 bool isTargeted = (isHoverSelf && unit == activeActor) || (isHoverEnemy && unit == activeTarget);
                 if (isTargeted) {
@@ -587,12 +931,11 @@ namespace App {
 
                         unsigned int diffCol = (resFrac.n >= 0) ? GetColor(100, 255, 100) : GetColor(255, 100, 100);
                         SetFontSize(28);
-                        if (next > Fraction(m_targetScore)) DrawString(popX + 15, popY + 10, "!! BUST !!", GetColor(180, 180, 180));
-                        else if (next == Fraction(m_targetScore)) DrawString(popX + 15, popY + 10, "FINISH !!", GetColor(255, 255, 0));
+                        if (next == Fraction(m_targetScore)) DrawString(popX + 15, popY + 10, "FINISH !!", GetColor(255, 255, 0));
+                        else if (next > Fraction(m_targetScore)) DrawString(popX + 15, popY + 10, "OVER !!", GetColor(255, 150, 0));
                         else DrawFormatString(popX + 15, popY + 10, diffCol, "%s%s", (resFrac.n >= 0) ? " +" : " ", resFrac.ToString().c_str());
                     }
                     else {
-                        // ★ クラシックモードの予測ポップアップ（残機増減と変化）
                         int intRes = 0;
                         if (aOp == '+') intRes = aNum + tNum; else if (aOp == '-') intRes = aNum - tNum;
                         else if (aOp == '*') intRes = aNum * tNum; else if (aOp == '/') intRes = (tNum != 0) ? aNum / tNum : 0;
@@ -622,10 +965,8 @@ namespace App {
             }
 
             int moveDist = 3 - ((unit->GetNumber() - 1) % 3);
-            // ★ 文字被りを解消：文字を短くし、グリッド（ix）をさらに右へ離しました
             DrawFormatString(x + 20, infoY + 65, GetColor(220, 220, 220), "移動可能マス: %d マス", moveDist);
 
-            // ★ グリッド位置修正
             int ix = x + 350, iy = infoY + 15;
             SetFontSize(20);
             DrawString(ix - 5, iy, "【移動範囲】", GetColor(150, 150, 150));
@@ -640,9 +981,6 @@ namespace App {
         drawUnitCard(40, 100, m_player.get(), true);
         drawUnitCard(1380, 100, m_enemy.get(), false);
 
-        // ==========================================
-        // 5. 下部のログとガイド表示
-        // ==========================================
         int ly = 760;
         SetFontSize(22);
 
@@ -659,11 +997,9 @@ namespace App {
         DrawString(1380, ly + 50, " 1, 4, 7 ＝ 3マス移動", GetColor(255, 200, 100));
         DrawString(1380, ly + 90, " 2, 5, 8 ＝ 2マス移動", GetColor(180, 180, 180));
         DrawString(1380, ly + 130, " 3, 6, 9 ＝ 1マス移動", GetColor(100, 150, 255));
-        DrawString(1380, ly + 180, " ＋/－/＊/÷ ＝ 演算子アイテム\n取得で移動範囲拡大", GetColor(255, 255, 180));
+        DrawString(1380, ly + 180, " ＋/－/＊ ＝ 計算方向へジャンプ", GetColor(255, 255, 180));
+        DrawString(1380, ly + 215, " ÷ ＝ (分子,分母)のマスを【陣地】化", GetColor(255, 100, 255));
 
-        // ==========================================
-        // 6. 中央下部のアクション＆計算エリア
-        // ==========================================
         int py = 830;
         SetDrawBlendMode(DX_BLENDMODE_ALPHA, 200);
         DrawBox(600, py, 1320, 940, GetColor(5, 5, 8), TRUE);
@@ -677,7 +1013,6 @@ namespace App {
             int tNum = activeTarget->GetNumber();
             char aOp = activeActor->GetOp();
 
-            // ★ クラシックモードとゼロワンモードで結果の表示を分ける
             if (m_ruleMode == RuleMode::ZERO_ONE) {
                 Fraction resFrac;
                 if (aOp == '+') resFrac = Fraction(aNum + tNum); else if (aOp == '-') resFrac = Fraction(aNum - tNum);
@@ -712,11 +1047,14 @@ namespace App {
                 if (isHoverSelf || isHoverEnemy) {
                     std::string targetName = isHoverSelf ? (activeActor == m_player.get() ? "1P" : "2P") : (activeTarget == m_player.get() ? "1P" : "2P");
                     DrawFormatString(650, py + 82, GetColor(255, 255, 255), "▼ %s のスコアにこの結果を反映", targetName.c_str());
+
+                    if (aOp == '/') {
+                        DrawFormatString(650, py + 112, GetColor(255, 100, 255), "★ さらに座標(%d, %d)を【陣地】として登録", aNum, tNum);
+                    }
                 }
                 else { DrawString(770, py + 82, "どちらに反映しますか", GetColor(120, 120, 130)); }
             }
             else {
-                // ★ クラシックモードの明確な結果表示
                 int intRes = 0;
                 if (aOp == '+') intRes = aNum + tNum; else if (aOp == '-') intRes = aNum - tNum;
                 else if (aOp == '*') intRes = aNum * tNum; else if (aOp == '/') intRes = (tNum != 0) ? aNum / tNum : 0;
@@ -732,7 +1070,7 @@ namespace App {
                 SetFontSize(24);
                 if (isHoverSelf || isHoverEnemy) {
                     std::string targetName = isHoverSelf ? (activeActor == m_player.get() ? "1P" : "2P") : (activeTarget == m_player.get() ? "1P" : "2P");
-                    int nextNum = ((intRes - 1) % 9 + 9) % 9 + 1; // 安全なサイクル計算
+                    int nextNum = ((intRes - 1) % 9 + 9) % 9 + 1;
 
                     if (intRes <= 0) {
                         DrawFormatString(620, py + 82, GetColor(255, 100, 100), "▼ 攻撃！ %s の【 残機を1減らし 】、体力を [%d] にします", targetName.c_str(), nextNum);
@@ -742,6 +1080,10 @@ namespace App {
                     }
                     else {
                         DrawFormatString(620, py + 82, GetColor(220, 220, 220), "▼ 変化！ %s の体力を [%d] に変更", targetName.c_str(), nextNum);
+                    }
+
+                    if (aOp == '/') {
+                        DrawFormatString(620, py + 112, GetColor(255, 100, 255), "★ さらに座標(%d, %d)を【陣地】として登録", aNum, tNum);
                     }
                 }
                 else { DrawString(770, py + 82, "適用する対象を選択してください", GetColor(120, 120, 130)); }
@@ -754,11 +1096,11 @@ namespace App {
             SetFontSize(28); DrawString(800, py + 40, "ターゲットが射程内にいません", GetColor(100, 110, 120));
         }
 
-        // ==========================================
-        // 7. アクション実行ボタン
-        // ==========================================
         if (m_currentPhase == Phase::P1_Action || m_currentPhase == Phase::P2_Action) {
-            if (m_currentPhase == Phase::P2_Action && m_gameMode == GameMode::VS_CPU) return;
+            // ★ NPCアクション中はボタンを隠す
+            if (m_currentPhase == Phase::P1_Action && m_is1P_NPC) return;
+            if (m_currentPhase == Phase::P2_Action && m_is2P_NPC) return;
+
             int by = 960;
 
             if (canAttack && hasOp) {
@@ -806,8 +1148,9 @@ namespace App {
 
         if (m_ruleMode == RuleMode::ZERO_ONE) {
             Fraction goal(m_targetScore);
-            if (m_p1ZeroOneScore == goal) return true;
-            if (m_p2ZeroOneScore == goal) return true;
+            // ★ AIの挙動を見るためにいったん無効化中
+             if (m_p1ZeroOneScore == goal) return true;
+             if (m_p2ZeroOneScore == goal) return true;
             return false;
         }
 
