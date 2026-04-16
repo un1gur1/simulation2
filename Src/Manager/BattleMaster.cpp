@@ -55,7 +55,6 @@ namespace App {
         m_p1ZeroOneScore = Fraction(0, 1);
         m_p2ZeroOneScore = Fraction(0, 1);
 
-        // ★ SceneManager から初期設定を受け取る
         m_is1P_NPC = sm->Is1PNPC();
         m_is2P_NPC = sm->Is2PNPC();
         IntVector2 p1StartPos{ sm->Get1PStartX(), sm->Get1PStartY() };
@@ -63,7 +62,6 @@ namespace App {
         int p1Num = sm->Get1PStartNum();
         int p2Num = sm->Get2PStartNum();
 
-        // ★ カスタムされた初期位置と数字でユニットを生成
         m_player = std::make_unique<Player>(p1StartPos, m_mapGrid.GetCellCenter(p1StartPos.x, p1StartPos.y), p1Num, 5, 5);
         m_enemy = std::make_unique<Enemy>(p2StartPos, m_mapGrid.GetCellCenter(p2StartPos.x, p2StartPos.y), p2Num, 5, 5);
 
@@ -149,7 +147,11 @@ namespace App {
                         activeUnit.AddNumber(-cost);
                         std::queue<Vector2> autoPath;
 
-                        if (activeUnit.HasWarpNode(m_hoverGrid)) {
+                        int dx = std::abs(m_hoverGrid.x - pos.x);
+                        int dy = std::abs(m_hoverGrid.y - pos.y);
+
+                        // ★ 修正：安全な経路作成ロジックに統一
+                        if (activeUnit.HasWarpNode(m_hoverGrid) || (dx != dy && dx != 0 && dy != 0)) {
                             autoPath.push(m_mapGrid.GetCellCenter(m_hoverGrid.x, m_hoverGrid.y));
                             AddLog("【跳躍】 陣地へ転送完了。");
                         }
@@ -157,11 +159,12 @@ namespace App {
                             int stepX = (m_hoverGrid.x > pos.x) ? 1 : (m_hoverGrid.x < pos.x) ? -1 : 0;
                             int stepY = (m_hoverGrid.y > pos.y) ? 1 : (m_hoverGrid.y < pos.y) ? -1 : 0;
                             IntVector2 curr = pos;
-                            int safetyCounter = 0;
-                            while (curr != m_hoverGrid && safetyCounter < 20) {
-                                curr.x += stepX; curr.y += stepY;
+
+                            int maxSteps = std::max(dx, dy);
+                            for (int i = 0; i < maxSteps; ++i) {
+                                curr.x += stepX;
+                                curr.y += stepY;
                                 autoPath.push(m_mapGrid.GetCellCenter(curr.x, curr.y));
-                                safetyCounter++;
                             }
                         }
 
@@ -196,12 +199,12 @@ namespace App {
             Phase nextTurnPhase = (&actor == m_player.get()) ? Phase::P2_Move : Phase::P1_Move;
             if (canAttack && hasOp) {
                 if (CheckButtonClick(600, 970, 220, 70, mousePos)) {
-                    ExecuteBattle(actor, targetUnit, actor);
+                    ExecuteBattle(actor, targetUnit, actor); // 自分に適用
                     m_currentPhase = nextTurnPhase;
                     if (&actor != m_player.get()) m_mapGrid.UpdateTurn();
                 }
                 else if (CheckButtonClick(850, 970, 220, 70, mousePos)) {
-                    ExecuteBattle(actor, targetUnit, targetUnit);
+                    ExecuteBattle(actor, targetUnit, targetUnit); // 相手に適用
                     m_currentPhase = nextTurnPhase;
                     if (&actor != m_player.get()) m_mapGrid.UpdateTurn();
                 }
@@ -241,13 +244,23 @@ namespace App {
                     ExecuteBattle(*me, *opp, *me);
                 }
                 else {
-                    int aNum = me->GetNumber(); int tNum = opp->GetNumber();
-                    int res = 0;
-                    if (myOp == '+') res = aNum + tNum; else if (myOp == '-') res = aNum - tNum;
-                    else if (myOp == '*') res = aNum * tNum; else if (myOp == '/') res = (tNum != 0) ? aNum / tNum : 0;
+                    int aNum = me->GetNumber();
+                    int tNum = opp->GetNumber();
+                    int delta = 0;
+                    if (myOp == '+') delta = aNum + tNum;
+                    else if (myOp == '-') delta = aNum - tNum;
+                    else if (myOp == '*') delta = aNum * tNum;
 
-                    if (res > 9) ExecuteBattle(*me, *opp, *me);
-                    else ExecuteBattle(*me, *opp, *opp);
+                    // ★ AIの判断：マイナスダメージなら敵へ、プラス（回復）なら自分へ使う！
+                    if (myOp == '/') {
+                        ExecuteBattle(*me, *opp, *me); // 割り算は陣地作成
+                    }
+                    else if (delta < 0) {
+                        ExecuteBattle(*me, *opp, *opp); // 敵を攻撃！
+                    }
+                    else {
+                        ExecuteBattle(*me, *opp, *me);  // 自分を回復！
+                    }
                 }
             }
             else {
@@ -278,7 +291,6 @@ namespace App {
         if (m_enemy)  m_enemy->Update();
         m_hoverGrid = m_mapGrid.ScreenToGrid(input.GetMousePos());
 
-        // ★ 各プレイヤーが NPC かどうかで処理を分岐
         switch (m_currentPhase) {
         case Phase::P1_Move:
             if (m_is1P_NPC) {
@@ -317,7 +329,7 @@ namespace App {
         }
     }
 
-    void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int selectedCost, bool is1P) {
+void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int selectedCost, bool is1P) {
         if (!me) return;
 
         IntVector2 ePos = me->GetGridPos();
@@ -334,18 +346,24 @@ namespace App {
             AddLog("【行動】 " + myName + " が進軍 (コスト: -" + std::to_string(selectedCost) + ")");
         }
 
-        if (me->HasWarpNode(bestTarget) || bestTarget == ePos) {
+        int dx = std::abs(bestTarget.x - ePos.x);
+        int dy = std::abs(bestTarget.y - ePos.y);
+
+        // ★ 修正：ワープ、または「斜め(dx==dy)でも十字(dx==0 or dy==0)でもない変則ジャンプ」の場合は、一瞬でワープさせる安全策
+        if (me->HasWarpNode(bestTarget) || bestTarget == ePos || (dx != dy && dx != 0 && dy != 0)) {
             screenPath.push(m_mapGrid.GetCellCenter(bestTarget.x, bestTarget.y));
         }
         else {
+            // 通常の直線・斜め移動（絶対に目的地を通り越さない安全なループ）
             int stepX = (bestTarget.x > ePos.x) ? 1 : (bestTarget.x < ePos.x) ? -1 : 0;
             int stepY = (bestTarget.y > ePos.y) ? 1 : (bestTarget.y < ePos.y) ? -1 : 0;
             IntVector2 curr = ePos;
-            int safety = 0;
-            while (curr != bestTarget && safety < 20) {
-                curr.x += stepX; curr.y += stepY;
+            
+            int maxSteps = std::max(dx, dy); // 移動するマスの数だけ正確にループする
+            for (int i = 0; i < maxSteps; ++i) {
+                curr.x += stepX; 
+                curr.y += stepY;
                 screenPath.push(m_mapGrid.GetCellCenter(curr.x, curr.y));
-                safety++;
             }
         }
 
@@ -355,18 +373,14 @@ namespace App {
         if (is1P) m_playerAIStarted = true;
         else m_enemyAIStarted = true;
     }
-
-    // 盤面の状態を評価する関数（AIの「賢さ」の心臓部）
     int BattleMaster::EvaluateBoard(UnitBase& me, int myVirtualNumber, UnitBase& enemy, IntVector2 targetPos, bool is1P) {
         int score = 0;
         char myOp = me.GetOp();
         IntVector2 ePos = enemy.GetGridPos();
         bool canAttack = (std::abs(targetPos.x - ePos.x) + std::abs(targetPos.y - ePos.y) == 1);
 
-        // ====================================================
-        // 【ゼロワンモード】の評価ロジック
-        // ====================================================
         if (m_ruleMode == RuleMode::ZERO_ONE) {
+            // 省略（ゼロワンモードは前回と同じ）
             Fraction goal(m_targetScore);
             Fraction myScore = is1P ? m_p1ZeroOneScore : m_p2ZeroOneScore;
             Fraction enemyScore = is1P ? m_p2ZeroOneScore : m_p1ZeroOneScore;
@@ -428,7 +442,7 @@ namespace App {
 
                         Fraction predicted = myScore + resFrac;
 
-                        if (predicted == goal) return 1000000; // ピッタリ到達！
+                        if (predicted == goal) return 1000000;
 
                         if (predicted > goal) {
                             Fraction excess = predicted - goal;
@@ -456,28 +470,22 @@ namespace App {
 
             if (canAttack) {
                 if (myOp == '\0' && enemy.GetOp() != '\0') score -= 4000;
-                if (myOp != '\0' && enemyDist <= 27) score += 800; // 妨害ボーナス
+                if (myOp != '\0' && enemyDist <= 27) score += 800;
             }
         }
-        // ====================================================
-        // 【クラシックモード】の評価ロジック（★ここから新規）
-        // ====================================================
         else {
-            // 基本的なステータス評価（残機は圧倒的に重要）
+            // ====================================================
+            // 【クラシックモード】★ AI思考を「ダメージ・回復加算型」に修正
+            // ====================================================
             score += me.GetStocks() * 10000;
             score -= enemy.GetStocks() * 10000;
 
-            // 自分の体力がヤバい（次のターン死ぬかも）なら、アイテムより自己防衛優先
-            if (myVirtualNumber <= 2) {
-                score -= 1000; // 体力が低いこと自体がマイナス
-            }
+            if (myVirtualNumber <= 2) score -= 1000;
 
             if (myOp == '\0') {
-                // アイテムを持っていない場合は取りに行く
                 char itemHere = m_mapGrid.GetItemAt(targetPos.x, targetPos.y);
                 if (itemHere != '\0') {
                     score += 5000;
-                    // 引き算は攻撃の要なので高評価
                     if (itemHere == '-') score += 2000;
                 }
                 else {
@@ -487,7 +495,7 @@ namespace App {
                             char item = m_mapGrid.GetItemAt(ix, iy);
                             if (item != '\0') {
                                 int dist = std::abs(targetPos.x - ix) + std::abs(targetPos.y - iy);
-                                if (item == '-') dist -= 2; // マイナスには引き寄せられる
+                                if (item == '-') dist -= 2;
                                 if (dist < minDist) minDist = dist;
                             }
                         }
@@ -500,74 +508,65 @@ namespace App {
                     int eNum = enemy.GetNumber();
 
                     if (myOp == '/') {
-                        // 割り算は陣地構築
                         int wx = myVirtualNumber - 1;
                         int wy = 9 - eNum;
                         IntVector2 nodePos{ wx, wy };
-
                         if (wy >= 0 && wy <= 8 && wx >= 0 && wx <= 8) {
-                            if (!me.HasWarpNode(nodePos)) {
-                                score += 1500; // 陣地を作る
-                            }
-                            else {
-                                score -= 500; // 既にあるなら無駄
-                            }
+                            if (!me.HasWarpNode(nodePos)) score += 1500;
+                            else score -= 500;
                         }
                     }
                     else {
-                        // 攻撃のシミュレーション
-                        int intRes = 0;
-                        if (myOp == '+') intRes = myVirtualNumber + eNum;
-                        else if (myOp == '-') intRes = myVirtualNumber - eNum;
-                        else if (myOp == '*') intRes = myVirtualNumber * eNum;
+                        // 1. 敵に攻撃するシミュレーション
+                        int delta = 0;
+                        if (myOp == '+') delta = myVirtualNumber + eNum;
+                        else if (myOp == '-') delta = myVirtualNumber - eNum;
+                        else if (myOp == '*') delta = myVirtualNumber * eNum;
 
-                        // ★ 最優先：相手の残機を削れる（0以下）
-                        if (intRes <= 0) {
-                            return 1000000; // 問答無用でキルを取りに行く
-                        }
-                        // 相手を回復させてしまう（10以上）のは絶対に避ける
-                        else if (intRes > 9) {
-                            score -= 5000;
-                        }
-                        // 単なるダメージ（体力を減らす）
-                        else {
-                            int currentEnemyNum = enemy.GetNumber();
-                            int nextEnemyNum = ((intRes - 1) % 9 + 9) % 9 + 1; // サイクル後の数値
+                        if (delta < 0) { // 敵へのダメージ
+                            int newHpRaw = eNum + delta;
+                            int sChange = 0;
+                            int simHp = newHpRaw;
+                            while (simHp <= 0) { sChange--; simHp += 9; }
 
-                            if (nextEnemyNum < currentEnemyNum) {
-                                // 体力を減らせるなら加点（大きく減らすほど良い）
-                                score += (currentEnemyNum - nextEnemyNum) * 100;
+                            if (sChange < 0) return 1000000; // キル！
+                            score += std::abs(delta) * 100; // ダメージが高いほど良い
+                        }
+
+                        // 2. 自分を回復するシミュレーション
+                        if (delta > 0) {
+                            int newHpRaw = myVirtualNumber + delta;
+                            int sChange = 0;
+                            int simHp = newHpRaw;
+                            while (simHp > 9) { sChange++; simHp -= 9; }
+
+                            if (sChange > 0) {
+                                score += sChange * 5000; // 回復して残機が増えるのは神
                             }
                             else {
-                                // 体力が増えちゃうなら少し減点
-                                score -= 500;
+                                score += delta * 50; // HPが増えるのも良い
                             }
                         }
                     }
                 }
                 else {
-                    // 攻撃圏外なら相手に近づく
                     int distToEnemy = std::abs(targetPos.x - ePos.x) + std::abs(targetPos.y - ePos.y);
                     score += (100 - distToEnemy) * 15;
                 }
             }
 
-            // 危険度：相手が武器を持っていて自分が持っていないなら逃げる
             if (canAttack && myOp == '\0' && enemy.GetOp() != '\0') {
                 score -= 3000;
             }
         }
 
-        // ====================================================
-        // 共通の盤面評価
-        // ====================================================
-        // 端っこペナルティ
         if (targetPos.x == 0 || targetPos.x == 8 || targetPos.y == 0 || targetPos.y == 8) {
             score -= 200;
         }
 
         return score;
     }
+
     void BattleMaster::ExecuteAI(UnitBase* me, UnitBase* opp, bool is1P) {
         if (!me || me->GetStocks() <= 0) return;
 
@@ -647,7 +646,7 @@ namespace App {
         std::string aName = (&attacker == m_player.get()) ? "1P" : "2P";
 
         if (aOp != '/') {
-            AddLog(">> " + aName + " の計算！ [ 結果: " + resFrac.ToString() + " ]");
+            AddLog(">> " + aName + " の計算！ [ 値: " + std::to_string(intRes) + " ]");
         }
 
         ApplyBattleResult(target, resFrac, intRes, aOp);
@@ -687,19 +686,38 @@ namespace App {
             unit.SetNumber(cycleValue + 1);
         }
         else {
-            int cycleValue = (intRes - 1) % 9;
-            if (cycleValue < 0) cycleValue += 9;
-            int remain = cycleValue + 1;
+            // ★ クラシックモード：計算結果（intRes）を現在体力に足し合わせる処理
+            if (op != '/') {
+                int currentHp = unit.GetNumber();
+                int newHpRaw = currentHp + intRes; // 現在の体力にダメージ/回復を加算
 
-            if (intRes <= 0) {
-                unit.AddStocks(-1);
-                AddLog("【ー】 " + name + " の残機 -1！");
+                int stockChange = 0;
+
+                // 0以下なら残機消費して9へループ
+                while (newHpRaw <= 0) {
+                    stockChange--;
+                    newHpRaw += 9;
+                }
+                // 10以上なら残機回復して1からループ
+                while (newHpRaw > 9) {
+                    stockChange++;
+                    newHpRaw -= 9;
+                }
+
+                if (stockChange < 0) {
+                    unit.AddStocks(stockChange); // 残機を減らす
+                    AddLog("【ダメージ】 " + name + " の残機 " + std::to_string(stockChange) + "！");
+                }
+                else if (stockChange > 0) {
+                    unit.AddStocks(stockChange); // 残機を増やす
+                    AddLog("【回復】 " + name + " の残機 +" + std::to_string(stockChange) + "！");
+                }
+                else {
+                    AddLog("【反映】 " + name + " の数値にダメージ/回復を適用");
+                }
+                unit.SetNumber(newHpRaw);
+                AddLog("【結果】 " + name + " の体力は [" + std::to_string(newHpRaw) + "] になった。");
             }
-            else if (intRes > 9) {
-                unit.AddStocks(1);
-                AddLog("【＋】 " + name + " の残機 +1！");
-            }
-            unit.SetNumber(remain);
         }
     }
 
@@ -841,7 +859,6 @@ namespace App {
         unsigned int phaseCol;
         const char* phaseName;
 
-        // ★ テキストの切り替え
         if (m_currentPhase == Phase::P1_Move) { phaseCol = GetColor(180, 110, 0); phaseName = m_is1P_NPC ? "1Pのターン (思考中)" : "1Pのターン (移動選択)"; }
         else if (m_currentPhase == Phase::P1_Action) { phaseCol = GetColor(180, 110, 0); phaseName = m_is1P_NPC ? "1Pのターン (思考中)" : "1Pのターン (行動選択)"; }
         else if (m_currentPhase == Phase::P2_Move) { phaseCol = GetColor(30, 50, 120); phaseName = m_is2P_NPC ? "2Pのターン (思考中)" : "2Pのターン (移動選択)"; }
@@ -871,7 +888,6 @@ namespace App {
             unsigned int baseCol = is1P ? GetColor(255, 165, 0) : GetColor(80, 120, 255);
             unsigned int darkBg = GetColor(14, 16, 20);
 
-            // ★ 名前表示の切り替え
             std::string headerName = is1P ? (m_is1P_NPC ? "1P (COM)" : "1P PLAYER") : (m_is2P_NPC ? "2P (COM)" : "2P PLAYER");
 
             SetFontSize(36);
@@ -913,6 +929,7 @@ namespace App {
                 DrawFormatString(x + 20, scoreY + 10, GetColor(255, 255, 255), "%d", unit->GetNumber());
             }
 
+            // ★ クラシックの予測ポップアップ表示の修正
             if (canAttack && hasOp) {
                 bool isTargeted = (isHoverSelf && unit == activeActor) || (isHoverEnemy && unit == activeTarget);
                 if (isTargeted) {
@@ -936,18 +953,29 @@ namespace App {
                         else DrawFormatString(popX + 15, popY + 10, diffCol, "%s%s", (resFrac.n >= 0) ? " +" : " ", resFrac.ToString().c_str());
                     }
                     else {
-                        int intRes = 0;
+                        int intRes = 0; // これはダメージ/回復値
                         if (aOp == '+') intRes = aNum + tNum; else if (aOp == '-') intRes = aNum - tNum;
-                        else if (aOp == '*') intRes = aNum * tNum; else if (aOp == '/') intRes = (tNum != 0) ? aNum / tNum : 0;
+                        else if (aOp == '*') intRes = aNum * tNum; else if (aOp == '/') intRes = 0;
 
-                        int cycleValue = (intRes - 1) % 9;
-                        if (cycleValue < 0) cycleValue += 9;
-                        int nextNum = cycleValue + 1;
+                        if (aOp != '/') {
+                            int targetCurrentHp = isHoverSelf ? aNum : tNum;
+                            int newHpRaw = targetCurrentHp + intRes;
+                            int stockChange = 0;
+                            int simulatedHp = newHpRaw;
+                            while (simulatedHp <= 0) { stockChange--; simulatedHp += 9; }
+                            while (simulatedHp > 9) { stockChange++; simulatedHp -= 9; }
 
-                        SetFontSize(24);
-                        if (intRes <= 0) DrawFormatString(popX + 10, popY + 12, GetColor(255, 80, 80), "→ 残機-1 ｜ 体力[%d]", nextNum);
-                        else if (intRes > 9) DrawFormatString(popX + 10, popY + 12, GetColor(100, 255, 100), "→ 残機+1 ｜ 体力[%d]", nextNum);
-                        else DrawFormatString(popX + 10, popY + 12, GetColor(200, 200, 200), "→ 体力が [%d] に", nextNum);
+                            SetFontSize(24);
+                            if (stockChange < 0) {
+                                DrawFormatString(popX + 10, popY + 12, GetColor(255, 80, 80), "→ 残機%d ｜ 体力[%d]", stockChange, simulatedHp);
+                            }
+                            else if (stockChange > 0) {
+                                DrawFormatString(popX + 10, popY + 12, GetColor(100, 255, 100), "→ 残機+%d ｜ 体力[%d]", stockChange, simulatedHp);
+                            }
+                            else {
+                                DrawFormatString(popX + 10, popY + 12, GetColor(200, 200, 200), "→ 体力が [%d] に", simulatedHp);
+                            }
+                        }
                     }
                 }
             }
@@ -1057,29 +1085,36 @@ namespace App {
             else {
                 int intRes = 0;
                 if (aOp == '+') intRes = aNum + tNum; else if (aOp == '-') intRes = aNum - tNum;
-                else if (aOp == '*') intRes = aNum * tNum; else if (aOp == '/') intRes = (tNum != 0) ? aNum / tNum : 0;
+                else if (aOp == '*') intRes = aNum * tNum; else if (aOp == '/') intRes = 0;
 
                 SetFontSize(64);
-                DrawFormatString(672, py + 17, GetColor(0, 0, 0), "%d %c %d =", aNum, aOp, tNum);
-                DrawFormatString(670, py + 15, GetColor(255, 255, 255), "%d %c %d =", aNum, aOp, tNum);
+                DrawFormatString(672, py + 17, GetColor(0, 0, 0), "%d %c %d =>", aNum, aOp, tNum);
+                DrawFormatString(670, py + 15, GetColor(255, 255, 255), "%d %c %d =>", aNum, aOp, tNum);
 
-                unsigned int resColor = (intRes <= 0) ? GetColor(255, 80, 80) : (intRes > 9 ? GetColor(100, 255, 100) : GetColor(255, 200, 0));
-                DrawFormatString(1012, py + 17, GetColor(0, 0, 0), "%d", intRes);
-                DrawFormatString(1010, py + 15, resColor, "%d", intRes);
+                unsigned int resColor = (intRes < 0) ? GetColor(255, 80, 80) : (intRes > 0 ? GetColor(100, 255, 100) : GetColor(255, 200, 0));
+                DrawFormatString(1032, py + 17, GetColor(0, 0, 0), "%s%d", (intRes > 0 ? "+" : ""), intRes);
+                DrawFormatString(1030, py + 15, resColor, "%s%d", (intRes > 0 ? "+" : ""), intRes);
 
+                // ★ クラシックの画面下部ポップアップテキストを修正
                 SetFontSize(24);
                 if (isHoverSelf || isHoverEnemy) {
                     std::string targetName = isHoverSelf ? (activeActor == m_player.get() ? "1P" : "2P") : (activeTarget == m_player.get() ? "1P" : "2P");
-                    int nextNum = ((intRes - 1) % 9 + 9) % 9 + 1;
 
-                    if (intRes <= 0) {
-                        DrawFormatString(620, py + 82, GetColor(255, 100, 100), "▼ 攻撃！ %s の【 残機を1減らし 】、体力を [%d] にします", targetName.c_str(), nextNum);
+                    int targetCurrentHp = isHoverSelf ? aNum : tNum;
+                    int newHpRaw = targetCurrentHp + intRes;
+                    int stockChange = 0;
+                    int simulatedHp = newHpRaw;
+                    while (simulatedHp <= 0) { stockChange--; simulatedHp += 9; }
+                    while (simulatedHp > 9) { stockChange++; simulatedHp -= 9; }
+
+                    if (stockChange < 0) {
+                        DrawFormatString(620, py + 82, GetColor(255, 100, 100), "▼ 攻撃！ %s の【 残機を%d 】、体力を [%d] にします", targetName.c_str(), stockChange, simulatedHp);
                     }
-                    else if (intRes > 9) {
-                        DrawFormatString(620, py + 82, GetColor(100, 255, 100), "▼ 回復！ %s の【 残機を1増やし 】、体力を [%d] にします", targetName.c_str(), nextNum);
+                    else if (stockChange > 0) {
+                        DrawFormatString(620, py + 82, GetColor(100, 255, 100), "▼ 回復！ %s の【 残機を+%d 】、体力を [%d] にします", targetName.c_str(), stockChange, simulatedHp);
                     }
                     else {
-                        DrawFormatString(620, py + 82, GetColor(220, 220, 220), "▼ 変化！ %s の体力を [%d] に変更", targetName.c_str(), nextNum);
+                        DrawFormatString(620, py + 82, GetColor(220, 220, 220), "▼ 変化！ %s の体力を [%d] に変更", targetName.c_str(), simulatedHp);
                     }
 
                     if (aOp == '/') {
@@ -1097,7 +1132,6 @@ namespace App {
         }
 
         if (m_currentPhase == Phase::P1_Action || m_currentPhase == Phase::P2_Action) {
-            // ★ NPCアクション中はボタンを隠す
             if (m_currentPhase == Phase::P1_Action && m_is1P_NPC) return;
             if (m_currentPhase == Phase::P2_Action && m_is2P_NPC) return;
 
@@ -1148,9 +1182,8 @@ namespace App {
 
         if (m_ruleMode == RuleMode::ZERO_ONE) {
             Fraction goal(m_targetScore);
-            // ★ AIの挙動を見るためにいったん無効化中
-             if (m_p1ZeroOneScore == goal) return true;
-             if (m_p2ZeroOneScore == goal) return true;
+            if (m_p1ZeroOneScore == goal) return true;
+            if (m_p2ZeroOneScore == goal) return true;
             return false;
         }
 

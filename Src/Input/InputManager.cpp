@@ -31,6 +31,10 @@ namespace App {
         Add(KEY_INPUT_DOWN);
         Add(KEY_INPUT_LEFT);
         Add(KEY_INPUT_RIGHT);
+
+        Add(KEY_INPUT_W);
+        Add(KEY_INPUT_S);
+        Add(KEY_INPUT_SPACE);
     }
 
     void InputManager::Add(int key) {

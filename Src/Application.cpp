@@ -1,6 +1,8 @@
 #include "Application.h"
 #include <DxLib.h>
-#include "Scene/SceneManager.h" 
+#include "Scene/SceneManager.h"
+#include "Input/InputManager.h" // InputManagerのパスは環境に合わせてください
+
 namespace App {
 
     // 静的インスタンス
@@ -27,8 +29,8 @@ namespace App {
         : m_shouldQuit(false)
         , m_showInfo(true)
         , m_frameCount(0)
-        , m_windowWidth(1280) // 画面サイズ（必要に応じて変更してください）
-        , m_windowHeight(720)
+        , m_windowWidth(1920) // 初期値をフルHDに
+        , m_windowHeight(1080)
         , m_initFail(false)
         , m_releaseFail(false)
     {
@@ -44,8 +46,9 @@ namespace App {
             return false;
         }
 
-        // --- シーン管理の初期化と最初のシーン設定 ---
-        // ※SceneManager側の実装（CreateInstance等）に合わせて適宜調整してください
+        // ★追加：InputManagerの初期化
+        InputManager::GetInstance().Init();
+
         if (SceneManager::GetInstance() == nullptr) {
             SceneManager::CreateInstance();
         }
@@ -55,7 +58,6 @@ namespace App {
 
         return true;
     }
-
     bool Application::IsInitFail() const {
         return m_initFail;
     }
@@ -69,13 +71,17 @@ namespace App {
                 break;
             }
 
+            if (SceneManager::GetInstance()->GetGameEnd()) {
+                m_shouldQuit = true;
+                break;
+            }
+
             Update();
             Draw();
             ScreenFlip();
             Sleep(1);
         }
     }
-
     void Application::Delete() {
         m_releaseFail = false;
         Shutdown();
@@ -85,54 +91,70 @@ namespace App {
         return m_releaseFail;
     }
 
-    // --- 内部実装 ---
-
     bool Application::Initialize() {
-        // 1. 解像度をフルHDに設定
         m_windowWidth = 1920;
         m_windowHeight = 1080;
+
+        ChangeWindowMode(TRUE);
+
+        // ★ ボーダーレスフルスクリーン設定（カーソル消失防止）
+        SetFullScreenResolutionMode(DX_FSRESOLUTIONMODE_DESKTOP);
+
         SetGraphMode(m_windowWidth, m_windowHeight, 32);
 
-        // 2. フルスクリーンに設定（FALSEでフルスクリーン）
-        // 開発中は TRUE (ウィンドウ) の方がデバッグしやすいですが、本番は FALSE にします
-        ChangeWindowMode(FALSE);
-
-        SetMainWindowText("simulation");
-        //SetUseCharCodeFormat(DX_CHARCODEFORMAT_UTF8);
+        SetWindowSizeChangeEnableFlag(TRUE, TRUE);
+        SetWindowStyleMode(7);
+        SetWindowSizeExtendRate(1.0);
+        SetWindowSize(1280, 720);
+        SetMainWindowText("超計算マスBATTLE");
 
         if (DxLib_Init() == -1) return false;
 
         SetMouseDispFlag(TRUE);
-
         SetDrawScreen(DX_SCREEN_BACK);
-        SetBackgroundColor(20, 20, 25); // 少し紺色っぽい暗い背景がおしゃれ
+
+        // コンセプトカラー：深い紺色（背景色と同化させて黒帯を目立たせない）
+        SetBackgroundColor(5, 10, 25);
         return true;
     }
-    void Application::Shutdown() {
-        // DxLibを終了する前に、SceneManagerを安全に破棄してメモリを解放
-        SceneManager::DeleteInstance();
 
+    void Application::Shutdown() {
+        SceneManager::DeleteInstance();
         DxLib_End();
     }
 
     void Application::Update() {
-        // ESCキーによるアプリケーション終了処理
-        if (CheckHitKey(KEY_INPUT_ESCAPE) == 1) {
-            m_shouldQuit = true;
-            return;
+        // ★ 全シーン共通：入力を毎フレーム更新
+        InputManager::GetInstance().Update();
+
+        // ※ ESCキーでの即終了は削除（SceneManagerのポーズ処理に委譲するため）
+
+        // ====================================================
+        // ★ F11キーで フルスクリーン ⇔ ウィンドウ の切り替え
+        // ====================================================
+        static int prevF11 = 0;
+        int currentF11 = CheckHitKey(KEY_INPUT_F11);
+
+        if (currentF11 == 1 && prevF11 == 0) {
+            if (GetWindowModeFlag() == TRUE) {
+                ChangeWindowMode(FALSE);
+            }
+            else {
+                ChangeWindowMode(TRUE);
+            }
+            SetMouseDispFlag(TRUE); // 切り替え時の念押し表示
         }
+        prevF11 = currentF11;
+        // ====================================================
 
-        // ゲーム全体の更新処理を SceneManager に委譲
         SceneManager::GetInstance()->Update();
-
         ++m_frameCount;
     }
 
     void Application::Draw() {
-        // 画面のクリア
         ClearDrawScreen();
 
-        // ゲーム全体の描画処理を SceneManager に委譲
+        // 描画は常に SceneManager（およびその中のポーズ画面）が行う
         SceneManager::GetInstance()->Draw();
     }
 

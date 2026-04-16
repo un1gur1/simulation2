@@ -9,7 +9,7 @@ namespace App {
     class GameScene;
     class TitleScene;
     class ResultScene;
-
+	class PauseMenu;
     class SceneManager
     {
     public:
@@ -72,13 +72,14 @@ namespace App {
         SceneBase* scene_;
         Loading* load_;
         Fader* fader_;
+		PauseMenu* pauseMenu_;
 
         SCENE_ID sceneId_;
         SCENE_ID nextSceneId_;
 
         bool isChanging_;
         bool isGameEnd_;
-
+		bool isPaused_;
         int playerCount_;
         int gameMode_;
         int zeroOneScore_;

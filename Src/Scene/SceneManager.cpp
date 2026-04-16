@@ -2,6 +2,7 @@
 #include "GameScene.h"
 #include "TitleScene.h"
 #include "ResultScene.h"
+#include "PauseMenu.h"
 #include <utility>
 
 namespace App {
@@ -12,11 +13,12 @@ namespace App {
         , sceneId_(SCENE_ID::NONE), nextSceneId_(SCENE_ID::NONE)
         , isChanging_(false), isGameEnd_(false)
         , playerCount_(1), gameMode_(0), zeroOneScore_(501)
-        // ★追加：変数の初期化（デフォルトは1P人間・2P敵のいつもの設定）
         , is1P_NPC_(false), is2P_NPC_(true)
         , p1StartNum_(5), p2StartNum_(7)
         , p1StartX_(1), p1StartY_(1)
         , p2StartX_(7), p2StartY_(7)
+        , isPaused_(false)
+        , pauseMenu_(new PauseMenu()) 
     {
     }
 
@@ -24,11 +26,14 @@ namespace App {
         if (scene_) { scene_->Release(); delete scene_; scene_ = nullptr; }
         if (load_) { delete load_; load_ = nullptr; }
         if (fader_) { delete fader_; fader_ = nullptr; }
+        // ★ 追加：ポーズメニューもしっかり解放
+        if (pauseMenu_) { delete pauseMenu_; pauseMenu_ = nullptr; }
     }
 
     void SceneManager::Init() {
         isGameEnd_ = false;
         isChanging_ = false;
+        isPaused_ = false; // 初期化時はポーズ解除
         sceneId_ = SCENE_ID::NONE;
         nextSceneId_ = SCENE_ID::NONE;
 
@@ -36,7 +41,6 @@ namespace App {
         gameMode_ = 0;
         zeroOneScore_ = 501;
 
-        // ★追加：タイトルに戻った際に初期値にリセット
         is1P_NPC_ = false;
         is2P_NPC_ = true;
         p1StartNum_ = 5;
@@ -53,11 +57,55 @@ namespace App {
 
     void SceneManager::Update() {
         if (isChanging_) PerformSceneChange();
-        if (scene_) scene_->Update();
+
+        // ====================================================
+        // ★ 修正：ESCキーのトグルのロジック
+        // ====================================================
+        static bool prevEsc = false;
+        if (CheckHitKey(KEY_INPUT_ESCAPE) == 1) {
+            if (!prevEsc) {
+                isPaused_ = !isPaused_;
+                // ポーズした瞬間だけメニューを初期化
+                if (isPaused_ && pauseMenu_) pauseMenu_->Init();
+            }
+            prevEsc = true; // 押されている間はtrue
+        }
+        else {
+            prevEsc = false; // 離されたらリセット！これで次の一回が反応する
+        }
+
+        // ====================================================
+        // 状態に応じた更新
+        // ====================================================
+        if (isPaused_) {
+            if (pauseMenu_) {
+                auto result = pauseMenu_->Update();
+                if (result == PauseMenu::Result::RESUME) {
+                    isPaused_ = false;
+                }
+                else if (result == PauseMenu::Result::TITLE) {
+                    isPaused_ = false;
+                    ChangeScene(SCENE_ID::TITLE);
+                }
+                else if (result == PauseMenu::Result::EXIT) {
+                    isGameEnd_ = true;
+                }
+            }
+        }
+        else {
+            // 通常時のみシーンを動かす
+            if (scene_) scene_->Update();
+        }
     }
 
     void SceneManager::Draw() {
+        // 1. 背面のゲーム画面を描画
         if (scene_) scene_->Draw();
+
+        // 2. ★ 修正：ポーズ中ならその上にメニューを重ねて描画
+        if (isPaused_ && pauseMenu_) {
+            pauseMenu_->Draw();
+        }
     }
 
     void SceneManager::Delete() {
@@ -88,6 +136,9 @@ namespace App {
         sceneId_ = nextSceneId_;
         nextSceneId_ = SCENE_ID::NONE;
         isChanging_ = false;
+
+        // シーンを跨ぐときはポーズを強制解除するのが安全
+        isPaused_ = false;
 
         if (scene_) {
             scene_->Init();
