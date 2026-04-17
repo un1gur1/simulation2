@@ -1,8 +1,9 @@
 #include "GameScene.h"
 #include <DxLib.h>
 #include "../Input/InputManager.h" 
-#include "SceneManager.h"   // ★追加：シーンマネージャー
-#include "ResultScene.h"    // ★追加：リザルトシーンにデータを渡すため
+#include "SceneManager.h"   // シーンマネージャー
+
+// ★ ResultScene.h はもう直接触らないのでインクルード不要！
 
 namespace App {
 
@@ -19,8 +20,6 @@ namespace App {
     void GameScene::Init() {
         m_frameCount = 0;
         m_showInfo = true;
-        //m_battleMaster.Init(BattleMaster::GameMode::VS_PLAYER);
-        //m_battleMaster.Init(BattleMaster::GameMode::VS_CPU);
         m_battleMaster.Init();
     }
 
@@ -28,20 +27,9 @@ namespace App {
     void GameScene::LoadEnd() {}
 
     void GameScene::Update() {
+        // ★ バトルの進行、決着演出、戦績集計、リザルトへの遷移は
+        // すべて BattleMaster がやってくれるので、ここは Update を呼ぶだけでOK！
         m_battleMaster.Update();
-
-        // ★追加：ゲームオーバー判定とシーン遷移
-        if (m_battleMaster.IsGameOver()) {
-            // どっちが勝ったかを取得 
-            bool isWin = m_battleMaster.IsPlayerWin();
-
-            // 次のシーン（ResultScene）に勝敗データをセット
-            ResultScene::SetIsWin(isWin);
-
-            // リザルト画面へ飛ぶ！
-            // ※ SCENE_ID に RESULT が無い場合は SceneManager 側で追加してください
-            SceneManager::GetInstance()->ChangeScene(SceneManager::SCENE_ID::RESULT);
-        }
 
         ++m_frameCount;
     }

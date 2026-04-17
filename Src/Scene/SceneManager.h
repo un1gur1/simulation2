@@ -1,5 +1,4 @@
 #pragma once
-
 #include "SceneBase.h"
 
 namespace App {
@@ -9,7 +8,17 @@ namespace App {
     class GameScene;
     class TitleScene;
     class ResultScene;
-	class PauseMenu;
+    class PauseMenu;
+
+    // ★追加：戦績データをまとめる構造体
+    struct BattleStats {
+        int totalTurns;     // 経過ターン数
+        int totalMoves;     // 総移動マス数
+        int totalOpsUsed;   // 使用した演算子数
+        int playTimeFrames; // プレイ時間（フレーム数）
+        int maxDamage;      // 最大ダメージ（スコア）
+    };
+
     class SceneManager
     {
     public:
@@ -41,21 +50,13 @@ namespace App {
         int GetGameMode() const { return gameMode_; }
         int GetZeroOneScore() const { return zeroOneScore_; }
 
-        // ★追加：1Pと2Pのカスタム設定を受け取る関数
         void SetPlayer1Settings(bool isNPC, int startNum, int startX, int startY) {
-            is1P_NPC_ = isNPC;
-            p1StartNum_ = startNum;
-            p1StartX_ = startX;
-            p1StartY_ = startY;
+            is1P_NPC_ = isNPC; p1StartNum_ = startNum; p1StartX_ = startX; p1StartY_ = startY;
         }
         void SetPlayer2Settings(bool isNPC, int startNum, int startX, int startY) {
-            is2P_NPC_ = isNPC;
-            p2StartNum_ = startNum;
-            p2StartX_ = startX;
-            p2StartY_ = startY;
+            is2P_NPC_ = isNPC; p2StartNum_ = startNum; p2StartX_ = startX; p2StartY_ = startY;
         }
 
-        // ★追加：設定を読み出すゲッター関数
         bool Is1PNPC() const { return is1P_NPC_; }
         bool Is2PNPC() const { return is2P_NPC_; }
         int Get1PStartNum() const { return p1StartNum_; }
@@ -65,6 +66,16 @@ namespace App {
         int Get2PStartX() const { return p2StartX_; }
         int Get2PStartY() const { return p2StartY_; }
 
+        // ==========================================
+        // ★追加：戦績データのセッターとゲッター
+        // ==========================================
+        void SetBattleResult(bool isWin, const BattleStats& stats) {
+            m_lastIsWin = isWin;
+            m_lastStats = stats;
+        }
+        bool GetLastIsWin() const { return m_lastIsWin; }
+        const BattleStats& GetLastStats() const { return m_lastStats; }
+
     private:
         void PerformSceneChange();
         static SceneManager* instance_;
@@ -72,19 +83,18 @@ namespace App {
         SceneBase* scene_;
         Loading* load_;
         Fader* fader_;
-		PauseMenu* pauseMenu_;
+        PauseMenu* pauseMenu_;
 
         SCENE_ID sceneId_;
         SCENE_ID nextSceneId_;
 
         bool isChanging_;
         bool isGameEnd_;
-		bool isPaused_;
+        bool isPaused_;
         int playerCount_;
         int gameMode_;
         int zeroOneScore_;
 
-        // ★追加：ユニットの設定を保持する変数
         bool is1P_NPC_;
         bool is2P_NPC_;
         int  p1StartNum_;
@@ -93,6 +103,10 @@ namespace App {
         int  p1StartY_;
         int  p2StartX_;
         int  p2StartY_;
+
+        // ★追加：戦績保持用のメンバ変数
+        bool m_lastIsWin = false;
+        BattleStats m_lastStats = { 0, 0, 0, 0, 0 };
 
     private:
         SceneManager();

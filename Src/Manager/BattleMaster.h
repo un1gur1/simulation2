@@ -46,7 +46,7 @@ namespace App {
 
     class BattleMaster {
     public:
-        enum class Phase { P1_Move, P1_Action, P2_Move, P2_Action, Result };
+        enum class Phase { P1_Move, P1_Action, P2_Move, P2_Action, Result, FINISH};
         enum class GameMode { VS_CPU, VS_PLAYER };
         enum class RuleMode { CLASSIC, ZERO_ONE };
 
@@ -72,6 +72,19 @@ namespace App {
         bool m_is1P_NPC;
         bool m_is2P_NPC;
 
+        // --- 演出・シェーダー用 ---
+        int m_finishTimer = 0;      // 終了演出のタイマー
+        int m_psHandle = -1;        // 背景シェーダー
+        int m_cbHandle = -1;        // 定数バッファ
+        float m_shaderTime = 0.0f;  // 背景のスクロール時間
+        float m_effectIntensity = 0.0f; // 攻撃時や勝利時の画面の揺れ・発光パワー
+
+ 
+        int m_playFrames = 0;
+        int m_totalMoves = 0;
+        int m_totalOps = 0;
+        int m_maxDamage = 0;
+
         std::vector<std::string> m_actionLog;
         void AddLog(const std::string& message);
 
@@ -89,7 +102,7 @@ namespace App {
 
     public:
         BattleMaster();
-        ~BattleMaster() = default;
+        ~BattleMaster() ;
 
         void Init();
         void Update();
@@ -111,6 +124,8 @@ namespace App {
         void ExecuteEnemyAI();
         void DrawMovableArea();
         void DrawEnemyDangerArea();
+
+        Vector2 GetAdjustedMousePos() const;
     };
 
 } // namespace App

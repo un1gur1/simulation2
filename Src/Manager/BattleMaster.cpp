@@ -5,6 +5,7 @@
 #include <algorithm>
 #include "../Input/InputManager.h"
 #include "../Scene/SceneManager.h" 
+#include "../../CyberGrid.h" 
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -24,7 +25,18 @@ namespace App {
         , m_playerAIStarted(false)
         , m_is1P_NPC(false)
         , m_is2P_NPC(true)
+        , m_finishTimer(0)
+        , m_psHandle(-1)
+        , m_cbHandle(-1)
+        , m_shaderTime(0.0f)
+        , m_effectIntensity(0.0f)
+        , m_playFrames(0), m_totalMoves(0), m_totalOps(0), m_maxDamage(0) // ★初期化
     {
+    }
+
+    BattleMaster::~BattleMaster() {
+        if (m_psHandle != -1) DeleteShader(m_psHandle);
+        if (m_cbHandle != -1) DeleteShaderConstantBuffer(m_cbHandle);
     }
 
     void BattleMaster::AddLog(const std::string& message) {
@@ -72,6 +84,18 @@ namespace App {
         m_isPlayerSelected = false;
         m_enemyAIStarted = false;
         m_playerAIStarted = false;
+        m_finishTimer = 0;
+
+        // ★ 戦績カウントリセット
+        m_playFrames = 0;
+        m_totalMoves = 0;
+        m_totalOps = 0;
+        m_maxDamage = 0;
+
+        m_psHandle = LoadPixelShaderFromMem(g_ps_CyberGrid, sizeof(g_ps_CyberGrid));
+        m_cbHandle = CreateShaderConstantBuffer(sizeof(float) * 4);
+        m_shaderTime = 0.0f;
+        m_effectIntensity = 0.0f;
 
         m_actionLog.clear();
         std::string rModeStr = (m_ruleMode == RuleMode::CLASSIC) ? "クラシック" : "ゼロワン";
@@ -150,7 +174,9 @@ namespace App {
                         int dx = std::abs(m_hoverGrid.x - pos.x);
                         int dy = std::abs(m_hoverGrid.y - pos.y);
 
-                        // ★ 修正：安全な経路作成ロジックに統一
+                        // ★戦績：移動マス数を加算
+                        m_totalMoves += std::max(dx, dy);
+
                         if (activeUnit.HasWarpNode(m_hoverGrid) || (dx != dy && dx != 0 && dy != 0)) {
                             autoPath.push(m_mapGrid.GetCellCenter(m_hoverGrid.x, m_hoverGrid.y));
                             AddLog("【跳躍】 陣地へ転送完了。");
@@ -159,7 +185,6 @@ namespace App {
                             int stepX = (m_hoverGrid.x > pos.x) ? 1 : (m_hoverGrid.x < pos.x) ? -1 : 0;
                             int stepY = (m_hoverGrid.y > pos.y) ? 1 : (m_hoverGrid.y < pos.y) ? -1 : 0;
                             IntVector2 curr = pos;
-
                             int maxSteps = std::max(dx, dy);
                             for (int i = 0; i < maxSteps; ++i) {
                                 curr.x += stepX;
@@ -199,12 +224,12 @@ namespace App {
             Phase nextTurnPhase = (&actor == m_player.get()) ? Phase::P2_Move : Phase::P1_Move;
             if (canAttack && hasOp) {
                 if (CheckButtonClick(600, 970, 220, 70, mousePos)) {
-                    ExecuteBattle(actor, targetUnit, actor); // 自分に適用
+                    ExecuteBattle(actor, targetUnit, actor);
                     m_currentPhase = nextTurnPhase;
                     if (&actor != m_player.get()) m_mapGrid.UpdateTurn();
                 }
                 else if (CheckButtonClick(850, 970, 220, 70, mousePos)) {
-                    ExecuteBattle(actor, targetUnit, targetUnit); // 相手に適用
+                    ExecuteBattle(actor, targetUnit, targetUnit);
                     m_currentPhase = nextTurnPhase;
                     if (&actor != m_player.get()) m_mapGrid.UpdateTurn();
                 }
@@ -251,15 +276,14 @@ namespace App {
                     else if (myOp == '-') delta = aNum - tNum;
                     else if (myOp == '*') delta = aNum * tNum;
 
-                    // ★ AIの判断：マイナスダメージなら敵へ、プラス（回復）なら自分へ使う！
                     if (myOp == '/') {
-                        ExecuteBattle(*me, *opp, *me); // 割り算は陣地作成
+                        ExecuteBattle(*me, *opp, *me);
                     }
                     else if (delta < 0) {
-                        ExecuteBattle(*me, *opp, *opp); // 敵を攻撃！
+                        ExecuteBattle(*me, *opp, *opp);
                     }
                     else {
-                        ExecuteBattle(*me, *opp, *me);  // 自分を回復！
+                        ExecuteBattle(*me, *opp, *me);
                     }
                 }
             }
@@ -276,6 +300,42 @@ namespace App {
     }
 
     void BattleMaster::Update() {
+        // ==========================================
+        // ★ フィニッシュ（決着）演出フェーズ
+        // ==========================================
+        if (m_currentPhase == Phase::FINISH) {
+            m_finishTimer++;
+            m_effectIntensity = std::min(m_effectIntensity + 0.1f, 5.0f);
+            m_shaderTime += 0.01f * m_effectIntensity;
+
+            // 1秒経ったら入力を受け付けて、ResultSceneへ遷移する！
+            if (m_finishTimer > 60) {
+                auto& input = InputManager::GetInstance();
+                if (input.IsMouseLeftTrg() || input.IsTrgDown(KEY_INPUT_SPACE) || input.IsTrgDown(KEY_INPUT_RETURN)) {
+
+                    // ★戦績をまとめて、SceneManagerに渡す！
+                    BattleStats stats = {
+                        m_mapGrid.GetTotalTurns(),
+                        m_totalMoves,
+                        m_totalOps,
+                        m_playFrames,
+                        m_maxDamage
+                    };
+                    auto* sm = SceneManager::GetInstance();
+                    sm->SetBattleResult(IsPlayerWin(), stats);
+
+                    // シーン遷移！
+                    sm->ChangeScene(SceneManager::SCENE_ID::RESULT);
+                }
+            }
+            return;
+        }
+
+        // ==========================================
+        // ★ 通常フェーズ
+        // ==========================================
+        m_playFrames++; // ★戦績：プレイ時間を毎フレーム加算
+
         if (m_ruleMode == RuleMode::ZERO_ONE) {
             if (m_player && m_player->GetStocks() < m_player->GetMaxStocks()) {
                 m_player->AddStocks(m_player->GetMaxStocks() - m_player->GetStocks());
@@ -286,10 +346,12 @@ namespace App {
         }
 
         auto& input = InputManager::GetInstance();
-        input.Update();
         if (m_player) m_player->Update();
         if (m_enemy)  m_enemy->Update();
         m_hoverGrid = m_mapGrid.ScreenToGrid(input.GetMousePos());
+
+        m_shaderTime += 0.0016f + (0.01f * m_effectIntensity);
+        if (m_effectIntensity > 0.0f) m_effectIntensity -= 0.05f;
 
         switch (m_currentPhase) {
         case Phase::P1_Move:
@@ -297,39 +359,33 @@ namespace App {
                 if (!m_playerAIStarted) { ExecuteAI(m_player.get(), m_enemy.get(), true); m_playerAIStarted = true; }
                 else if (m_player && !m_player->IsMoving()) { m_currentPhase = Phase::P1_Action; }
             }
-            else {
-                HandleMoveInput(*m_player, Phase::P1_Action);
-            }
+            else { HandleMoveInput(*m_player, Phase::P1_Action); }
             break;
         case Phase::P1_Action:
-            if (m_is1P_NPC) {
-                ExecuteAIAction(m_player.get(), m_enemy.get(), true);
-            }
-            else {
-                HandleActionInput(*m_player, *m_enemy);
-            }
+            if (m_is1P_NPC) { ExecuteAIAction(m_player.get(), m_enemy.get(), true); }
+            else { HandleActionInput(*m_player, *m_enemy); }
             break;
         case Phase::P2_Move:
             if (m_is2P_NPC) {
                 if (!m_enemyAIStarted) { ExecuteAI(m_enemy.get(), m_player.get(), false); m_enemyAIStarted = true; }
                 else if (m_enemy && !m_enemy->IsMoving()) { m_currentPhase = Phase::P2_Action; }
             }
-            else {
-                HandleMoveInput(*m_enemy, Phase::P2_Action);
-            }
+            else { HandleMoveInput(*m_enemy, Phase::P2_Action); }
             break;
         case Phase::P2_Action:
-            if (m_is2P_NPC) {
-                ExecuteAIAction(m_enemy.get(), m_player.get(), false);
-            }
-            else {
-                HandleActionInput(*m_enemy, *m_player);
-            }
+            if (m_is2P_NPC) { ExecuteAIAction(m_enemy.get(), m_player.get(), false); }
+            else { HandleActionInput(*m_enemy, *m_player); }
             break;
+        }
+
+        if (IsGameOver() && m_currentPhase != Phase::FINISH) {
+            m_currentPhase = Phase::FINISH;
+            m_finishTimer = 0;
+            m_effectIntensity = 1.0f;
         }
     }
 
-void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int selectedCost, bool is1P) {
+    void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int selectedCost, bool is1P) {
         if (!me) return;
 
         IntVector2 ePos = me->GetGridPos();
@@ -349,19 +405,20 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
         int dx = std::abs(bestTarget.x - ePos.x);
         int dy = std::abs(bestTarget.y - ePos.y);
 
-        // ★ 修正：ワープ、または「斜め(dx==dy)でも十字(dx==0 or dy==0)でもない変則ジャンプ」の場合は、一瞬でワープさせる安全策
+        // ★戦績：移動マス数を加算
+        m_totalMoves += std::max(dx, dy);
+
         if (me->HasWarpNode(bestTarget) || bestTarget == ePos || (dx != dy && dx != 0 && dy != 0)) {
             screenPath.push(m_mapGrid.GetCellCenter(bestTarget.x, bestTarget.y));
         }
         else {
-            // 通常の直線・斜め移動（絶対に目的地を通り越さない安全なループ）
             int stepX = (bestTarget.x > ePos.x) ? 1 : (bestTarget.x < ePos.x) ? -1 : 0;
             int stepY = (bestTarget.y > ePos.y) ? 1 : (bestTarget.y < ePos.y) ? -1 : 0;
             IntVector2 curr = ePos;
-            
-            int maxSteps = std::max(dx, dy); // 移動するマスの数だけ正確にループする
+
+            int maxSteps = std::max(dx, dy);
             for (int i = 0; i < maxSteps; ++i) {
-                curr.x += stepX; 
+                curr.x += stepX;
                 curr.y += stepY;
                 screenPath.push(m_mapGrid.GetCellCenter(curr.x, curr.y));
             }
@@ -373,14 +430,15 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
         if (is1P) m_playerAIStarted = true;
         else m_enemyAIStarted = true;
     }
+
     int BattleMaster::EvaluateBoard(UnitBase& me, int myVirtualNumber, UnitBase& enemy, IntVector2 targetPos, bool is1P) {
+        // ... (EvaluateBoardの中身は既存のままでOKです) ...
         int score = 0;
         char myOp = me.GetOp();
         IntVector2 ePos = enemy.GetGridPos();
         bool canAttack = (std::abs(targetPos.x - ePos.x) + std::abs(targetPos.y - ePos.y) == 1);
 
         if (m_ruleMode == RuleMode::ZERO_ONE) {
-            // 省略（ゼロワンモードは前回と同じ）
             Fraction goal(m_targetScore);
             Fraction myScore = is1P ? m_p1ZeroOneScore : m_p2ZeroOneScore;
             Fraction enemyScore = is1P ? m_p2ZeroOneScore : m_p1ZeroOneScore;
@@ -474,9 +532,6 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
             }
         }
         else {
-            // ====================================================
-            // 【クラシックモード】★ AI思考を「ダメージ・回復加算型」に修正
-            // ====================================================
             score += me.GetStocks() * 10000;
             score -= enemy.GetStocks() * 10000;
 
@@ -517,23 +572,20 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
                         }
                     }
                     else {
-                        // 1. 敵に攻撃するシミュレーション
                         int delta = 0;
                         if (myOp == '+') delta = myVirtualNumber + eNum;
                         else if (myOp == '-') delta = myVirtualNumber - eNum;
                         else if (myOp == '*') delta = myVirtualNumber * eNum;
 
-                        if (delta < 0) { // 敵へのダメージ
+                        if (delta < 0) {
                             int newHpRaw = eNum + delta;
                             int sChange = 0;
                             int simHp = newHpRaw;
                             while (simHp <= 0) { sChange--; simHp += 9; }
 
-                            if (sChange < 0) return 1000000; // キル！
-                            score += std::abs(delta) * 100; // ダメージが高いほど良い
+                            if (sChange < 0) return 1000000;
+                            score += std::abs(delta) * 100;
                         }
-
-                        // 2. 自分を回復するシミュレーション
                         if (delta > 0) {
                             int newHpRaw = myVirtualNumber + delta;
                             int sChange = 0;
@@ -541,10 +593,10 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
                             while (simHp > 9) { sChange++; simHp -= 9; }
 
                             if (sChange > 0) {
-                                score += sChange * 5000; // 回復して残機が増えるのは神
+                                score += sChange * 5000;
                             }
                             else {
-                                score += delta * 50; // HPが増えるのも良い
+                                score += delta * 50;
                             }
                         }
                     }
@@ -611,11 +663,12 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
         }
         PerformAIMove(me, bestMove, selectedCost, is1P);
     }
-
     void BattleMaster::ExecuteBattle(UnitBase& attacker, UnitBase& defender, UnitBase& target) {
         char aOp = attacker.GetOp();
         int aNum = attacker.GetNumber();
         int dNum = defender.GetNumber();
+
+        m_effectIntensity = 2.0f;
 
         if (aOp == '/') {
             if (dNum != 0) {
@@ -649,11 +702,18 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
             AddLog(">> " + aName + " の計算！ [ 値: " + std::to_string(intRes) + " ]");
         }
 
+        // ★戦績：使用回数と最大ダメージの記録
+        m_totalOps++;
+        if (std::abs(intRes) > m_maxDamage) {
+            m_maxDamage = std::abs(intRes);
+        }
+
         ApplyBattleResult(target, resFrac, intRes, aOp);
         attacker.SetOp('\0');
     }
 
     void BattleMaster::ApplyBattleResult(UnitBase& unit, Fraction resultFrac, int intRes, char op) {
+        // ... (ApplyBattleResultの中身は既存のままでOKです) ...
         std::string name = (&unit == m_player.get()) ? "1P" : "2P";
 
         if (m_ruleMode == RuleMode::ZERO_ONE) {
@@ -686,30 +746,27 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
             unit.SetNumber(cycleValue + 1);
         }
         else {
-            // ★ クラシックモード：計算結果（intRes）を現在体力に足し合わせる処理
             if (op != '/') {
                 int currentHp = unit.GetNumber();
-                int newHpRaw = currentHp + intRes; // 現在の体力にダメージ/回復を加算
+                int newHpRaw = currentHp + intRes;
 
                 int stockChange = 0;
 
-                // 0以下なら残機消費して9へループ
                 while (newHpRaw <= 0) {
                     stockChange--;
                     newHpRaw += 9;
                 }
-                // 10以上なら残機回復して1からループ
                 while (newHpRaw > 9) {
                     stockChange++;
                     newHpRaw -= 9;
                 }
 
                 if (stockChange < 0) {
-                    unit.AddStocks(stockChange); // 残機を減らす
+                    unit.AddStocks(stockChange);
                     AddLog("【ダメージ】 " + name + " の残機 " + std::to_string(stockChange) + "！");
                 }
                 else if (stockChange > 0) {
-                    unit.AddStocks(stockChange); // 残機を増やす
+                    unit.AddStocks(stockChange);
                     AddLog("【回復】 " + name + " の残機 +" + std::to_string(stockChange) + "！");
                 }
                 else {
@@ -792,10 +849,40 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
         SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
     }
 
-
     void BattleMaster::Draw() {
-        DrawBox(0, 0, 1920, 1080, GetColor(10, 12, 18), TRUE);
+        if (m_psHandle != -1 && m_cbHandle != -1) {
+            float* cb = (float*)GetBufferShaderConstantBuffer(m_cbHandle);
+            cb[0] = m_shaderTime;
+            cb[1] = 1920.0f;
+            cb[2] = 1080.0f;
+            cb[3] = 0.0f;
+            UpdateShaderConstantBuffer(m_cbHandle);
+            SetShaderConstantBuffer(m_cbHandle, DX_SHADERTYPE_PIXEL, 0);
 
+            SetUsePixelShader(m_psHandle);
+            VERTEX2DSHADER v[6];
+            for (int i = 0; i < 6; ++i) {
+                v[i].pos = VGet(0, 0, 0);
+                v[i].rhw = 1.0f;
+                v[i].dif = GetColorU8(255, 255, 255, 255);
+                v[i].spc = GetColorU8(0, 0, 0, 0);
+                v[i].u = 0.0f; v[i].v = 0.0f;
+            }
+            v[0].pos.x = 0;    v[0].pos.y = 0;    v[0].u = 0.0f; v[0].v = 0.0f;
+            v[1].pos.x = 1920; v[1].pos.y = 0;    v[1].u = 1.0f; v[1].v = 0.0f;
+            v[2].pos.x = 0;    v[2].pos.y = 1080; v[2].u = 0.0f; v[2].v = 1.0f;
+            v[3].pos.x = 1920; v[3].pos.y = 0;    v[3].u = 1.0f; v[3].v = 0.0f;
+            v[4].pos.x = 1920; v[4].pos.y = 1080; v[4].u = 1.0f; v[4].v = 1.0f;
+            v[5].pos.x = 0;    v[5].pos.y = 1080; v[5].u = 0.0f; v[5].v = 1.0f;
+
+            DrawPrimitive2DToShader(v, 6, DX_PRIMTYPE_TRIANGLELIST);
+            SetUsePixelShader(-1);
+        }
+        else {
+            DrawBox(0, 0, 1920, 1080, GetColor(10, 12, 18), TRUE);
+        }
+
+        SetDrawBlendMode(DX_BLENDMODE_ALPHA, 200);
         DrawBox(0, 70, 580, 1080, GetColor(18, 18, 22), TRUE);
         DrawBox(576, 70, 580, 1080, GetColor(255, 165, 0), TRUE);
         DrawLine(575, 70, 575, 1080, GetColor(255, 220, 100), 1);
@@ -803,6 +890,7 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
         DrawBox(1340, 70, 1920, 1080, GetColor(18, 18, 22), TRUE);
         DrawBox(1340, 70, 1344, 1080, GetColor(30, 50, 180), TRUE);
         DrawLine(1344, 70, 1344, 1080, GetColor(100, 150, 255), 1);
+        SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
 
         m_mapGrid.Draw();
 
@@ -862,7 +950,8 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
         if (m_currentPhase == Phase::P1_Move) { phaseCol = GetColor(180, 110, 0); phaseName = m_is1P_NPC ? "1Pのターン (思考中)" : "1Pのターン (移動選択)"; }
         else if (m_currentPhase == Phase::P1_Action) { phaseCol = GetColor(180, 110, 0); phaseName = m_is1P_NPC ? "1Pのターン (思考中)" : "1Pのターン (行動選択)"; }
         else if (m_currentPhase == Phase::P2_Move) { phaseCol = GetColor(30, 50, 120); phaseName = m_is2P_NPC ? "2Pのターン (思考中)" : "2Pのターン (移動選択)"; }
-        else { phaseCol = GetColor(30, 50, 120); phaseName = m_is2P_NPC ? "2Pのターン (思考中)" : "2Pのターン (行動選択)"; }
+        else if (m_currentPhase == Phase::P2_Action) { phaseCol = GetColor(30, 50, 120); phaseName = m_is2P_NPC ? "2Pのターン (思考中)" : "2Pのターン (行動選択)"; }
+        else { phaseCol = GetColor(150, 0, 255); phaseName = "GAME SET!!"; }
 
         DrawBox(0, 0, 1920, 70, phaseCol, TRUE);
         DrawLine(0, 70, 1920, 70, GetColor(255, 255, 255), 2);
@@ -889,6 +978,12 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
             unsigned int darkBg = GetColor(14, 16, 20);
 
             std::string headerName = is1P ? (m_is1P_NPC ? "1P (COM)" : "1P PLAYER") : (m_is2P_NPC ? "2P (COM)" : "2P PLAYER");
+
+            if ((is1P && Is1PTurn()) || (!is1P && !Is1PTurn() && m_currentPhase != Phase::FINISH)) {
+                SetDrawBlendMode(DX_BLENDMODE_ADD, (int)(100 + 50 * sin(GetNowCount() / 200.0)));
+                DrawBox(x - 5, y - 5, x + 505, y + 450, baseCol, FALSE);
+                SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+            }
 
             SetFontSize(36);
             DrawString(x + 5, y + 5, headerName.c_str(), baseCol);
@@ -929,7 +1024,6 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
                 DrawFormatString(x + 20, scoreY + 10, GetColor(255, 255, 255), "%d", unit->GetNumber());
             }
 
-            // ★ クラシックの予測ポップアップ表示の修正
             if (canAttack && hasOp) {
                 bool isTargeted = (isHoverSelf && unit == activeActor) || (isHoverEnemy && unit == activeTarget);
                 if (isTargeted) {
@@ -953,7 +1047,7 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
                         else DrawFormatString(popX + 15, popY + 10, diffCol, "%s%s", (resFrac.n >= 0) ? " +" : " ", resFrac.ToString().c_str());
                     }
                     else {
-                        int intRes = 0; // これはダメージ/回復値
+                        int intRes = 0;
                         if (aOp == '+') intRes = aNum + tNum; else if (aOp == '-') intRes = aNum - tNum;
                         else if (aOp == '*') intRes = aNum * tNum; else if (aOp == '/') intRes = 0;
 
@@ -1095,7 +1189,6 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
                 DrawFormatString(1032, py + 17, GetColor(0, 0, 0), "%s%d", (intRes > 0 ? "+" : ""), intRes);
                 DrawFormatString(1030, py + 15, resColor, "%s%d", (intRes > 0 ? "+" : ""), intRes);
 
-                // ★ クラシックの画面下部ポップアップテキストを修正
                 SetFontSize(24);
                 if (isHoverSelf || isHoverEnemy) {
                     std::string targetName = isHoverSelf ? (activeActor == m_player.get() ? "1P" : "2P") : (activeTarget == m_player.get() ? "1P" : "2P");
@@ -1169,6 +1262,27 @@ void BattleMaster::PerformAIMove(UnitBase* me, IntVector2 bestTarget, int select
                     SetFontSize(28);
                     DrawString(875, by + 16, "ターン終了", btnCol);
                 }
+            }
+        }
+
+        // ==========================================
+        // ★ 決着時の GAME SET 演出
+        // ==========================================
+        if (m_currentPhase == Phase::FINISH) {
+            SetDrawBlendMode(DX_BLENDMODE_ALPHA, 150);
+            DrawBox(0, 0, 1920, 1080, GetColor(0, 0, 0), TRUE);
+            SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+
+            SetFontSize(160);
+            const char* finishText = "GAME SET !!";
+            int textW = GetDrawStringWidth(finishText, (int)strlen(finishText));
+            DrawString(1920 / 2 - textW / 2, 1080 / 2 - 100, finishText, GetColor(255, 255, 255));
+
+            if (m_finishTimer > 60) {
+                SetFontSize(40);
+                const char* nextText = ">> CLICK TO NEXT <<";
+                int nw = GetDrawStringWidth(nextText, (int)strlen(nextText));
+                DrawString(1920 / 2 - nw / 2, 1080 / 2 + 100, nextText, GetColor(200, 200, 200));
             }
         }
     }
