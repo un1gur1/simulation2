@@ -11,7 +11,7 @@
 
 namespace App {
 
-    // ★追加：分数を完璧に計算・約分するオリジナル構造体
+    // 分数を完璧に計算・約分するオリジナル構造体
     struct Fraction {
         long long n; // 分子 (Numerator)
         long long d; // 分母 (Denominator)
@@ -37,16 +37,14 @@ namespace App {
             if (d == 1) return std::to_string(n);
             long long whole = n / d;
             long long rem = std::abs(n % d);
-            if (whole == 0) {
-                return (n < 0 ? "-" : "") + std::to_string(rem) + "/" + std::to_string(d);
-            }
+            if (whole == 0) return (n < 0 ? "-" : "") + std::to_string(rem) + "/" + std::to_string(d);
             return std::to_string(whole) + (n < 0 ? " - " : " + ") + std::to_string(rem) + "/" + std::to_string(d);
         }
     };
 
     class BattleMaster {
     public:
-        enum class Phase { P1_Move, P1_Action, P2_Move, P2_Action, Result, FINISH};
+        enum class Phase { P1_Move, P1_Action, P2_Move, P2_Action, Result, FINISH };
         enum class GameMode { VS_CPU, VS_PLAYER };
         enum class RuleMode { CLASSIC, ZERO_ONE };
 
@@ -59,54 +57,53 @@ namespace App {
         std::unique_ptr<Player> m_player;
         std::unique_ptr<Enemy>  m_enemy;
 
-        // ★修正：スコアを分数(Fraction)として持つ！
         Fraction m_p1ZeroOneScore;
         Fraction m_p2ZeroOneScore;
-        int m_targetScore; // ★追加：目標スコア (501など)
+        int m_targetScore;
 
         bool       m_isPlayerSelected;
         IntVector2 m_hoverGrid;
         bool       m_enemyAIStarted;
-        bool       m_playerAIStarted; // ★ 追加
+        bool       m_playerAIStarted;
 
         bool m_is1P_NPC;
         bool m_is2P_NPC;
 
         // --- 演出・シェーダー用 ---
-        int m_finishTimer = 0;      // 終了演出のタイマー
-        int m_psHandle = -1;        // 背景シェーダー
-        int m_cbHandle = -1;        // 定数バッファ
-        float m_shaderTime = 0.0f;  // 背景のスクロール時間
-        float m_effectIntensity = 0.0f; // 攻撃時や勝利時の画面の揺れ・発光パワー
+        int m_finishTimer = 0;
+        int m_psHandle = -1;
+        int m_cbHandle = -1;
+        float m_shaderTime = 0.0f;
+        float m_effectIntensity = 0.0f;
 
- 
-        int m_playFrames = 0;
+        // --- 戦績データ ---
         int m_totalMoves = 0;
         int m_totalOps = 0;
         int m_maxDamage = 0;
-
+        int m_startTime = 0;
         std::vector<std::string> m_actionLog;
         void AddLog(const std::string& message);
 
         bool CanMove(int number, char op, IntVector2 start, IntVector2 target, int& outCost) const;
-        void ApplyBattleResult(UnitBase& unit, Fraction resultFrac, int intRes, char op);
+        void ApplyBattleResult(UnitBase& unit, const Fraction& resultFrac, int intRes, char op);
 
         bool Is1PTurn() const;
         UnitBase* GetActiveUnit() const;
         UnitBase* GetTargetUnit() const;
 
-        int  EvaluateBoard(UnitBase& me, int myVirtualNumber, UnitBase& enemy, IntVector2 targetPos, bool is1P);
+        // AI関連
+        int  EvaluateBoard(const UnitBase& me, int myVirtualNumber, const UnitBase& enemy, IntVector2 targetPos, bool is1P) const;
         void ExecuteAI(UnitBase* me, UnitBase* opp, bool is1P);
         void PerformAIMove(UnitBase* me, IntVector2 bestTarget, int selectedCost, bool is1P);
         void ExecuteAIAction(UnitBase* me, UnitBase* opp, bool is1P);
 
     public:
         BattleMaster();
-        ~BattleMaster() ;
+        ~BattleMaster();
 
         void Init();
         void Update();
-        void Draw();
+        void Draw() const; // ★ 状態を変更しないためconst化
 
         bool IsGameOver() const;
         bool IsPlayerWin() const;
@@ -115,17 +112,11 @@ namespace App {
         void HandleMoveInput(UnitBase& activeUnit, Phase nextPhase);
         void HandleActionInput(UnitBase& actor, UnitBase& targetUnit);
 
-        bool CheckButtonClick(int x, int y, int w, int h, Vector2 mousePos);
+        bool CheckButtonClick(int x, int y, int w, int h, const Vector2& mousePos) const;
         void ExecuteBattle(UnitBase& attacker, UnitBase& defender, UnitBase& target);
-        void PerformEnemyMove(IntVector2 bestTarget, int selectedCost);
 
-        int EvaluateBoard(UnitBase& me, int myVirtualNumber, UnitBase& enemy, IntVector2 targetPos);
-
-        void ExecuteEnemyAI();
-        void DrawMovableArea();
-        void DrawEnemyDangerArea();
-
-        Vector2 GetAdjustedMousePos() const;
+        void DrawMovableArea() const;       // ★ const化
+        void DrawEnemyDangerArea() const;   // ★ const化
     };
 
 } // namespace App

@@ -105,7 +105,7 @@ namespace App {
             };
 
         // 時間計算（フレーム数を秒に変換して MM:SS にする）
-        int totalSec = m_stats.playTimeFrames / 60;
+        int totalSec = m_stats.playTimeFrames / 1000;
         char timeStr[64];
         sprintf_s(timeStr, "%02d : %02d", totalSec / 60, totalSec % 60);
 

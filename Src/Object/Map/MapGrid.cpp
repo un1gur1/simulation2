@@ -9,45 +9,133 @@ namespace App {
     MapGrid::MapGrid(int tileSize, Vector2 offset)
         : m_tileSize(tileSize)
         , m_offset(offset)
+        , m_ruleMode(BattleRuleMode::CLASSIC)
         , m_totalTurns(0)
         , m_currentCycleTick(0)
+        , m_spawnInterval(3)
     {
+        // 初期化は SetRuleMode で行う
+    }
+
+    void MapGrid::SetRuleMode(BattleRuleMode mode) {
+        m_ruleMode = mode;
+
+        // モード別の湧き間隔を設定
+        if (m_ruleMode == BattleRuleMode::CLASSIC) {
+            m_spawnInterval = 3;  // クラシック: 3ターンごと
+        }
+        else {
+            m_spawnInterval = 2;  // ゼロワン: 2ターンごと
+        }
+
+        // モード別の初期化を実行
         InitializeSpawnPoints();
     }
 
     void MapGrid::InitializeSpawnPoints() {
         m_spawnPoints.clear();
 
-        // ★共通の湧き順シーケンス
-        std::vector<char> baseSeq = { '+', '-', '*', '/' };
+        if (m_ruleMode == BattleRuleMode::CLASSIC) {
+            InitializeClassicSpawns();
+        }
+        else {
+            InitializeZeroOneSpawns();
+        }
+    }
 
-        // ★配置場所の定義（9x9マップ）
-        struct PointDef { int x, y, startIdx; };
+    void MapGrid::InitializeClassicSpawns() {
+        // ★ クラシックモード（ノーマルバトル）
+        // 【配置戦略】
+        // - 1~3: 縦横移動（3マス/2マス/1マス） → 十字交差点に配置
+        // - 4~6: 斜め移動（3マス/2マス/1マス） → 対角線上に配置
+        // - 7~9: 全方向移動（3マス/2マス/1マス） → 中央・中間地点に配置
+        // - '÷' は移動の中継点となる戦略的位置に配置
+
+        struct PointDef { int x, y; char op; };
         PointDef defs[] = {
-            { 2, 2, 0 },
-            { 6, 2, 1 },
-            { 2, 6, 2 },
-            { 6, 6, 3 },
-            { 4, 1, 1 },
-            { 1, 4, 1 },
-            { 7, 4, 1 },
-			{ 4, 7, 1 },
-            // --- 中央 ---
-            { 4, 4, 1 } 
+            // 【中央十字エリア】- 縦横移動（1~3）が最も効率的にアクセス可能
+            { 4, 1, '+' },  // 上辺中央：スタート地点から縦移動で到達しやすい
+            { 4, 7, '+' },  // 下辺中央：同上
+            { 1, 4, '-' },  // 左辺中央：横移動で到達しやすい
+            { 7, 4, '-' },  // 右辺中央：同上
+
+            // 【四隅】- 斜め移動（4~6）が最も効率的、全方向移動（7~9）も2手で到達
+            { 2, 2, '*' },  // 左上：斜め移動の要所、攻撃的な'*'を配置
+            { 6, 2, '/' },  // 右上：陣地構築用、安全な位置
+            { 2, 6, '/' },  // 左下：同上
+            { 6, 6, '*' },  // 右下：斜め移動の要所、攻撃的な'*'を配置
+
+            // 【中央】- 全方向からアクセス可能な最重要争奪地点
+            { 4, 4, '+' },  // 中心：全ての数値から最もアクセスしやすい汎用演算子
+
+            // 【副次的戦略ポイント】- 斜め＋縦横の中間地点
+            { 3, 3, '-' },  // 左上寄り：低コストで左上隅の'*'への中継点
+            { 5, 5, '-' },  // 右下寄り：低コストで右下隅の'*'への中継点
         };
 
-        // 配列の要素数分だけSpawnPointを作成
         for (const auto& d : defs) {
             SpawnPoint sp;
             sp.pos = { d.x, d.y };
-            sp.sequence = baseSeq;
-            sp.currentIndex = d.startIdx % baseSeq.size(); // 安全装置
-            sp.currentSymbol = sp.sequence[sp.currentIndex];
-            sp.isAvailable = true; // 最初は全て配置
+            // ★ クラシックモードでは単一の演算子を繰り返す
+            sp.sequence = { d.op };
+            sp.currentIndex = 0;
+            sp.currentSymbol = d.op;
+            sp.isAvailable = true;
             m_spawnPoints.push_back(sp);
         }
     }
 
+    void MapGrid::InitializeZeroOneSpawns() {
+        // ★ ゼロワンモード（カウントバトル）
+        // 【配置戦略】
+        // - スコア調整に必須の '+', '-' を中央・アクセスしやすい位置に多数配置
+        // - '*' は倍率調整用に中間地点へ配置
+        // - '/' は分数スコア操作と陣地構築の二刀流
+        // - ローテーション制で戦略性を高める
+
+        // ★ '/' を追加したシーケンス
+        std::vector<char> zeroOneSeq = { '+', '-', '*', '/', '+', '-' };
+
+        struct PointDef { int x, y, startIdx; };
+        PointDef defs[] = {
+            // 【中央十字ライン】- 最もアクセスしやすい位置に '+', '-' を集中配置
+            { 4, 2, 0 },  // 上寄り: + スタート
+            { 4, 6, 1 },  // 下寄り: - スタート
+            { 2, 4, 1 },  // 左寄り: - スタート
+            { 6, 4, 0 },  // 右寄り: + スタート
+
+            // 【内側四隅】- 斜め移動での中継点、戦略的な争奪ポイント
+            { 3, 3, 0 },  // 左上: + スタート
+            { 5, 3, 1 },  // 右上: - スタート
+            { 3, 5, 2 },  // 左下: * スタート
+            { 5, 5, 3 },  // 右下: / スタート
+
+            // 【外側四隅】- 移動コストは高いが、陣取り要素として重要
+            { 2, 2, 4 },  // 左上: + スタート
+            { 6, 2, 5 },  // 右上: - スタート
+            { 2, 6, 3 },  // 左下: / スタート
+            { 6, 6, 2 },  // 右下: * スタート
+
+            // 【中央争奪ポイント】- 全方向からアクセス可能
+            { 4, 4, 2 },  // 中心: * スタート（倍率調整の要）
+
+            // 【辺の追加ポイント】- 数値が低い時でも到達しやすい位置
+            { 4, 1, 0 },  // 上辺: + スタート
+            { 4, 7, 4 },  // 下辺: + スタート
+            { 1, 4, 1 },  // 左辺: - スタート
+            { 7, 4, 5 },  // 右辺: - スタート
+        };
+
+        for (const auto& d : defs) {
+            SpawnPoint sp;
+            sp.pos = { d.x, d.y };
+            sp.sequence = zeroOneSeq;
+            sp.currentIndex = d.startIdx % zeroOneSeq.size();
+            sp.currentSymbol = sp.sequence[sp.currentIndex];
+            sp.isAvailable = true;
+            m_spawnPoints.push_back(sp);
+        }
+    }
     char MapGrid::PickUpItem(int x, int y) {
         for (auto& sp : m_spawnPoints) {
             if (sp.pos.x == x && sp.pos.y == y && sp.isAvailable) {
@@ -68,7 +156,7 @@ namespace App {
         m_totalTurns++;
         m_currentCycleTick++;
 
-        if (m_currentCycleTick >= SPAWN_INTERVAL) {
+        if (m_currentCycleTick >= m_spawnInterval) {
             m_currentCycleTick = 0;
 
             for (auto& sp : m_spawnPoints) {

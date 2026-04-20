@@ -9,6 +9,7 @@ namespace App {
             PRESS_START,
             SELECT_PLAYERS,
             SELECT_MODE,
+            SELECT_CLASSIC_STOCKS, 
             SELECT_SCORE,
             SELECT_P1_TYPE,
             SELECT_P2_TYPE,
@@ -22,13 +23,13 @@ namespace App {
         // ==========================================
         static constexpr int GRID_SIZE = 9;
 
-        static constexpr int DEF_P1_HP = 5;
+        static constexpr int DEF_P1_HP = 3;
         static constexpr int DEF_P1_X = 1;
         static constexpr int DEF_P1_Y = 1;
 
-        static constexpr int DEF_P2_HP = 7;
-        static constexpr int DEF_P2_X = 7;
-        static constexpr int DEF_P2_Y = 7;
+        static constexpr int DEF_P2_HP = 3;
+        static constexpr int DEF_P2_X = 9;
+        static constexpr int DEF_P2_Y = 9;
 
         // ==========================================
         // ★ プレイヤー設定構造体
@@ -45,6 +46,7 @@ namespace App {
         MenuState m_state;
         int m_playerCursor;
         int m_modeCursor;
+        int m_stocksCursor;    
         int m_scoreCursor;
 
         // 1Pと2Pの設定を配列で一括管理 (インデックス0=1P, 1=2P)
@@ -62,9 +64,6 @@ namespace App {
         int m_psHandle;
         int m_cbHandle;
         float m_shaderTime;
-        
-
-
 
     public:
         TitleScene();
@@ -77,7 +76,5 @@ namespace App {
         void Draw() override;
         void Release() override;
     };
-
-
 
 } // namespace App

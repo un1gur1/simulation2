@@ -17,6 +17,7 @@ namespace App {
         int totalOpsUsed;   // 使用した演算子数
         int playTimeFrames; // プレイ時間（フレーム数）
         int maxDamage;      // 最大ダメージ（スコア）
+        int m_maxStocks;
     };
 
     class SceneManager
@@ -49,6 +50,7 @@ namespace App {
         int GetPlayerCount() const { return playerCount_; }
         int GetGameMode() const { return gameMode_; }
         int GetZeroOneScore() const { return zeroOneScore_; }
+        int GetMaxStocks() const { return zeroOneScore_; }
 
         void SetPlayer1Settings(bool isNPC, int startNum, int startX, int startY) {
             is1P_NPC_ = isNPC; p1StartNum_ = startNum; p1StartX_ = startX; p1StartY_ = startY;

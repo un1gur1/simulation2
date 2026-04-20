@@ -17,6 +17,7 @@ namespace App {
         , p1StartNum_(5), p2StartNum_(7)
         , p1StartX_(1), p1StartY_(1)
         , p2StartX_(7), p2StartY_(7)
+		, m_lastIsWin(false), m_lastStats({ 0, 0, 0, 0, 0 })
         , isPaused_(false)
         , pauseMenu_(new PauseMenu()) 
     {

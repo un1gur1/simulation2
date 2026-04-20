@@ -108,6 +108,7 @@ namespace App {
         SetWindowSize(1280, 720);
         SetMainWindowText("í¥åvéZÉ}ÉXBATTLE");
 
+        SetChangeScreenModeGraphicsSystemResetFlag(FALSE);
         if (DxLib_Init() == -1) return false;
 
         SetMouseDispFlag(TRUE);
