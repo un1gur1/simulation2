@@ -321,10 +321,8 @@ namespace App {
                 auto& input = InputManager::GetInstance();
                 if (input.IsMouseLeftTrg() || input.IsTrgDown(KEY_INPUT_SPACE) || input.IsTrgDown(KEY_INPUT_RETURN)) {
 
-                    // ★ 今の時刻から開始時刻を引いて、実際のプレイ時間(ミリ秒)を算出
                     int finalTimeMs = GetNowCount() - m_startTime;
 
-                    // ★ 算出したミリ秒の変数を stats に渡す
                     BattleStats stats = {
                         m_mapGrid.GetTotalTurns(),
                         m_totalMoves,
@@ -424,11 +422,22 @@ namespace App {
     }
 
     int BattleMaster::EvaluateBoard(const UnitBase& me, int myVirtualNumber, const UnitBase& enemy, IntVector2 targetPos, bool is1P) const {
-        // ... (既存の EvaluateBoard のロジックそのまま。const化のみ)
         int score = 0;
         char myOp = me.GetOp();
         IntVector2 ePos = enemy.GetGridPos();
         bool canAttack = (std::abs(targetPos.x - ePos.x) + std::abs(targetPos.y - ePos.y) == 1);
+        bool isStay = (targetPos == me.GetGridPos());
+
+        // ★ 改善1：無意味な「その場足踏み」を重くペナルティ化
+        // （ただし、敵の隣で攻撃の数値を調整するための足踏みは許可する）
+        if (isStay && !canAttack) {
+            score -= 1000;
+        }
+
+        // 隅っこで固まるのを防ぐ微小ペナルティ
+        if (targetPos.x == 0 || targetPos.x == 8 || targetPos.y == 0 || targetPos.y == 8) {
+            score -= 50;
+        }
 
         if (m_ruleMode == RuleMode::ZERO_ONE) {
             Fraction goal(m_targetScore);
@@ -455,14 +464,15 @@ namespace App {
                             if (item != '\0') {
                                 int dist = std::abs(targetPos.x - ix) + std::abs(targetPos.y - iy);
                                 if (myDist <= 5) {
-                                    if (item == '-') dist -= 5;
-                                    if (item == '+') dist += 5;
+                                    if (item == '-') dist -= 2;
+                                    if (item == '+') dist += 2;
                                 }
                                 if (dist < minDist) minDist = dist;
                             }
                         }
                     }
-                    score += (100 - minDist) * 20;
+                    // ★ 改善2：アイテムへの「引力」を10倍に強化
+                    score += (20 - minDist) * 200;
                 }
             }
             else {
@@ -489,7 +499,8 @@ namespace App {
                         else if (myOp == '*') resFrac = Fraction(myVirtualNumber * eNum);
 
                         Fraction predicted = myScore + resFrac;
-                        if (predicted == goal) return 1000000;
+
+                        if (predicted == goal) return 1000000; // 勝利の確殺手は絶対選ぶ
 
                         if (predicted > goal) {
                             Fraction excess = predicted - goal;
@@ -500,31 +511,32 @@ namespace App {
                         long long progress = myDist - predictedDist;
 
                         if (progress > 0) {
-                            score += (int)progress * 50;
-                            score += (1000 - (int)predictedDist) * 2;
+                            score += (int)progress * 100; // 進行度の評価アップ
+                            score += (1000 - (int)predictedDist) * 5;
                         }
                         else {
                             if (myDist <= 3) score += 2000;
-                            else score -= (int)std::abs(progress) * 50;
+                            else score -= (int)std::abs(progress) * 100;
                         }
                     }
                 }
                 else {
                     int distToEnemy = std::abs(targetPos.x - ePos.x) + std::abs(targetPos.y - ePos.y);
-                    score += (100 - distToEnemy) * 15;
+                    // ★ 改善3：敵への「引力」を10倍に強化
+                    score += (20 - distToEnemy) * 200;
                 }
             }
 
             if (canAttack) {
-                if (myOp == '\0' && enemy.GetOp() != '\0') score -= 4000;
-                if (myOp != '\0' && enemyDist <= 27) score += 800;
+                if (myOp == '\0' && enemy.GetOp() != '\0') score -= 5000;
+                if (myOp != '\0' && enemyDist <= 27) score += 1000;
             }
         }
-        else {
+        else { // CLASSIC モード
             score += me.GetStocks() * 10000;
             score -= enemy.GetStocks() * 10000;
 
-            if (myVirtualNumber <= 2) score -= 1000;
+            // ★ ここにあった「体力が2以下ならペナルティ(-1000)」を削除しました！
 
             if (myOp == '\0') {
                 char itemHere = m_mapGrid.GetItemAt(targetPos.x, targetPos.y);
@@ -544,7 +556,7 @@ namespace App {
                             }
                         }
                     }
-                    score += (100 - minDist) * 20;
+                    score += (20 - minDist) * 200; // ★ 引力を強化
                 }
             }
             else {
@@ -572,8 +584,8 @@ namespace App {
                             int simHp = newHpRaw;
                             while (simHp <= 0) { sChange--; simHp += 9; }
 
-                            if (sChange < 0) return 1000000;
-                            score += std::abs(delta) * 100;
+                            if (sChange < 0) return 1000000; // 確殺手
+                            score += std::abs(delta) * 150; // ダメージの評価を高く
                         }
                         if (delta > 0) {
                             int newHpRaw = myVirtualNumber + delta;
@@ -588,22 +600,17 @@ namespace App {
                 }
                 else {
                     int distToEnemy = std::abs(targetPos.x - ePos.x) + std::abs(targetPos.y - ePos.y);
-                    score += (100 - distToEnemy) * 15;
+                    score += (20 - distToEnemy) * 200; // ★ 引力を強化
                 }
             }
 
             if (canAttack && myOp == '\0' && enemy.GetOp() != '\0') {
-                score -= 3000;
+                score -= 5000; // 丸腰での接敵ペナルティ
             }
-        }
-
-        if (targetPos.x == 0 || targetPos.x == 8 || targetPos.y == 0 || targetPos.y == 8) {
-            score -= 200;
         }
 
         return score;
     }
-
     void BattleMaster::ExecuteAI(UnitBase* me, UnitBase* opp, bool is1P) {
         if (!me || me->GetStocks() <= 0) return;
 
@@ -662,7 +669,7 @@ namespace App {
             if (!target.HasWarpNode(nodePos)) {
                 target.AddWarpNode(nodePos);
                 std::string targetName = (&target == m_player.get()) ? "1P" : "2P";
-                AddLog("【陣地構築】 " + targetName + " が座標 (" + std::to_string(aNum) + ", " + std::to_string(dNum) + ") に駅を設置！");
+                AddLog("【ワープ】 " + targetName + " が座標 (" + std::to_string(aNum) + ", " + std::to_string(dNum) + ") にワープ設置！");
             }
         }
 
@@ -719,7 +726,7 @@ namespace App {
                 }
             }
             else {
-                AddLog("【NODE】 スコア加算なし。座標系への干渉に成功。");
+                AddLog("【NODE】 スコア加算なし。");
             }
 
             int cycleValue = (intRes - 1) % 9;
@@ -1050,7 +1057,7 @@ namespace App {
             SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
 
             SetFontSize(18);
-            const char* lbl = "PREVIEW";
+            const char* lbl = "結果";
             int tw = GetDrawStringWidth(lbl, (int)strlen(lbl));
             DrawString((int)center.x - tw / 2, (int)center.y + 15, lbl, COL_TEXT_MAIN());
         }
@@ -1104,7 +1111,7 @@ namespace App {
 
                 SetFontSize(24);
                 DrawBox(x, scoreY + 200, x + 500, scoreY + 235, is1P ? GetColor(60, 40, 0) : GetColor(20, 30, 80), TRUE);
-                DrawFormatString(x + 15, scoreY + 206, COL_TEXT_MAIN(), "TARGET SCORE : %d", m_targetScore);
+                DrawFormatString(x + 15, scoreY + 206, COL_TEXT_MAIN(), "目標値 : %d", m_targetScore);
             }
             else {
                 if (p_previewNum != -1 && p_previewNum != unit->GetNumber()) {
@@ -1167,7 +1174,7 @@ namespace App {
         // ==========================================
         SetFontSize(22);
         DrawLine(40, LOG_PANEL_Y, 540, LOG_PANEL_Y, GetColor(60, 60, 70), 1);
-        DrawString(40, LOG_PANEL_Y + 10, "ACTION LOG", COL_DISABLE());
+        DrawString(40, LOG_PANEL_Y + 10, "ログ", COL_DISABLE());
         SetFontSize(20);
         for (size_t i = 0; i < m_actionLog.size(); ++i) {
             DrawFormatString(40, LOG_PANEL_Y + 45 + (int)i * 26, GetColor(180, 220, 160), "%s", m_actionLog[i].c_str());
@@ -1175,12 +1182,12 @@ namespace App {
 
         SetFontSize(22);
         DrawLine(1380, LOG_PANEL_Y, 1880, LOG_PANEL_Y, GetColor(60, 60, 70), 1);
-        DrawString(1380, LOG_PANEL_Y + 10, "RULE GUIDE", COL_DISABLE());
+        DrawString(1380, LOG_PANEL_Y + 10, "基本ルール", COL_DISABLE());
         DrawString(1380, LOG_PANEL_Y + 50, " 1, 4, 7 ＝ 3マス移動", GetColor(255, 200, 100));
         DrawString(1380, LOG_PANEL_Y + 90, " 2, 5, 8 ＝ 2マス移動", GetColor(180, 180, 180));
         DrawString(1380, LOG_PANEL_Y + 130, " 3, 6, 9 ＝ 1マス移動", GetColor(100, 150, 255));
-        DrawString(1380, LOG_PANEL_Y + 180, " ＋/－/＊ ＝ 計算方向へジャンプ", GetColor(255, 255, 180));
-        DrawString(1380, LOG_PANEL_Y + 215, " ÷ ＝ (分子,分母)のマスを【陣地】化", COL_INFO());
+        DrawString(1380, LOG_PANEL_Y + 180, " ＋、－、＊、÷を取得することで移動可能方向追加", GetColor(255, 255, 180));
+        DrawString(1380, LOG_PANEL_Y + 215, " ÷ ＝ (分子,分母)のマスにワープ設置", COL_INFO());
 
         // ==========================================
         // 8. 下部のアクション計算＆プレビュー統合パネル
@@ -1218,8 +1225,8 @@ namespace App {
         if (showCalcPanel) {
             if (isPreviewMode) {
                 SetFontSize(20);
-                if (willGetNewOp) DrawFormatString(610, BOTTOM_PANEL_Y + 10, GetColor(255, 200, 100), "▶ 移動プレビュー（演算子 [%c] を取得して接敵）", disp_aOp);
-                else DrawString(610, BOTTOM_PANEL_Y + 10, "▶ 移動プレビュー（接敵可能）", GetColor(255, 200, 100));
+                if (willGetNewOp) DrawFormatString(610, BOTTOM_PANEL_Y + 10, GetColor(255, 200, 100), "→ 移動プレビュー（演算子 [%c] を取得してバトル）", disp_aOp);
+                else DrawString(610, BOTTOM_PANEL_Y + 10, "→ 移動プレビュー（バトル可能）", GetColor(255, 200, 100));
             }
 
             int intRes = 0;
@@ -1274,11 +1281,11 @@ namespace App {
                     if (disp_aOp == '/') {
                         int wx = disp_aNum - 1; int wy = 9 - disp_tNum;
                         if (isCleanDivide) {
-                            DrawFormatString(650, BOTTOM_PANEL_Y + 115, COL_SAFE(), "★ 座標(%d, %d)に【自分】の陣地を作成！", wx, wy);
-                            DrawFormatString(950, BOTTOM_PANEL_Y + 115, COL_DANGER(), "★ 座標(%d, %d)に【相手】の陣地を作成！", wx, wy);
+                            DrawFormatString(650, BOTTOM_PANEL_Y + 115, COL_SAFE(), "座標(%d, %d)に【自分】のワープ設置！", wx, wy);
+                            DrawFormatString(950, BOTTOM_PANEL_Y + 115, COL_DANGER(), "座標(%d, %d)に【相手】のワープ設置！", wx, wy);
                         }
                         else {
-                            DrawFormatString(650, BOTTOM_PANEL_Y + 115, COL_INFO(), "★ 座標(%d, %d)に陣地作成 (※割り切れないためスコア変動なし)", wx, wy);
+                            DrawFormatString(650, BOTTOM_PANEL_Y + 115, COL_INFO(), "座標(%d, %d)にワープ設置 (※割り切れないためスコア変動なし)", wx, wy);
                         }
                     }
                 }
@@ -1288,21 +1295,21 @@ namespace App {
                         DrawFormatString(650, BOTTOM_PANEL_Y + 82, COL_TEXT_MAIN(), "▼ %s のスコアにこの結果を反映", targetName.c_str());
                         if (disp_aOp == '/') {
                             unsigned int warpCol = isHoverSelf ? COL_SAFE() : COL_DANGER();
-                            if (isCleanDivide) DrawFormatString(650, BOTTOM_PANEL_Y + 112, warpCol, "★ さらに座標(%d, %d)に【%s】の陣地を作成！", disp_aNum, disp_tNum, targetName.c_str());
-                            else DrawFormatString(650, BOTTOM_PANEL_Y + 112, warpCol, "★ 座標(%d, %d)に【%s】の陣地を作成！ (※スコア変動なし)", disp_aNum, disp_tNum, targetName.c_str());
+                            if (isCleanDivide) DrawFormatString(650, BOTTOM_PANEL_Y + 112, warpCol, "さらに座標(%d, %d)に【%s】のワープ設置！", disp_aNum, disp_tNum, targetName.c_str());
+                            else DrawFormatString(650, BOTTOM_PANEL_Y + 112, warpCol, "座標(%d, %d)に【%s】のワープ設置！ (※スコア変動なし)", disp_aNum, disp_tNum, targetName.c_str());
                         }
                     }
                     else {
                         DrawString(770, BOTTOM_PANEL_Y + 82, "どちらに反映しますか", GetColor(120, 120, 130));
-                        if (disp_aOp == '/') DrawFormatString(770, BOTTOM_PANEL_Y + 112, COL_INFO(), "★ 実行時、選択した対象に陣地が与えられます！");
+                        if (disp_aOp == '/') DrawFormatString(770, BOTTOM_PANEL_Y + 112, COL_INFO(), "実行時、選択した対象にワープを設置！");
                     }
                 }
             }
             else { // CLASSIC モード
                 SetFontSize(64);
                 int calcY = isPreviewMode ? BOTTOM_PANEL_Y + 27 : BOTTOM_PANEL_Y + 17;
-                DrawFormatString(672, calcY, COL_TEXT_DARK(), "%d %c %d =>", disp_aNum, disp_aOp, disp_tNum);
-                DrawFormatString(670, calcY - 2, COL_TEXT_MAIN(), "%d %c %d =>", disp_aNum, disp_aOp, disp_tNum);
+                DrawFormatString(672, calcY, COL_TEXT_DARK(), "%d %c %d =", disp_aNum, disp_aOp, disp_tNum);
+                DrawFormatString(670, calcY - 2, COL_TEXT_MAIN(), "%d %c %d =", disp_aNum, disp_aOp, disp_tNum);
 
                 unsigned int resColor = (intRes < 0) ? COL_DANGER() : (!isCleanDivide ? COL_DISABLE() : COL_SAFE());
                 DrawFormatString(1032, calcY, COL_TEXT_DARK(), "%s%d", (intRes > 0 ? "+" : ""), intRes);
@@ -1311,10 +1318,10 @@ namespace App {
                 SetFontSize(24);
                 if (isPreviewMode) {
                     if (disp_aOp == '/' && !isCleanDivide) {
-                        DrawString(650, BOTTOM_PANEL_Y + 85, "【自分に適用】", COL_SAFE());
-                        DrawFormatString(650, BOTTOM_PANEL_Y + 115, COL_INFO(), "★ 座標(%d, %d)に陣地作成 (※体力変動なし)", disp_aNum, disp_tNum);
-                        DrawString(950, BOTTOM_PANEL_Y + 85, "【相手に適用】", COL_DANGER());
-                        DrawFormatString(950, BOTTOM_PANEL_Y + 115, COL_INFO(), "★ 座標(%d, %d)に陣地作成 (※体力変動なし)", disp_aNum, disp_tNum);
+                        DrawString(650, BOTTOM_PANEL_Y + 85, "【自分に反映】", COL_SAFE());
+                        DrawFormatString(650, BOTTOM_PANEL_Y + 115, COL_INFO(), "★ 座標(%d, %d)にワープ設置 (※体力変動なし)", disp_aNum, disp_tNum);
+                        DrawString(950, BOTTOM_PANEL_Y + 85, "【相手に反映】", COL_DANGER());
+                        DrawFormatString(950, BOTTOM_PANEL_Y + 115, COL_INFO(), "★ 座標(%d, %d)にワープ設置 (※体力変動なし)", disp_aNum, disp_tNum);
                     }
                     else {
                         auto calcDmg = [](int currentHp, int currentStocks, int val, int& outHp, int& outStocks) {
@@ -1326,17 +1333,17 @@ namespace App {
                         calcDmg(disp_aNum, activeActor->GetStocks(), intRes, myHp, mySt);
                         calcDmg(disp_tNum, activeTarget->GetStocks(), intRes, enHp, enSt);
 
-                        DrawString(650, BOTTOM_PANEL_Y + 85, "【自分に適用】", COL_SAFE());
+                        DrawString(650, BOTTOM_PANEL_Y + 85, "【自分に反映】", COL_SAFE());
                         if (mySt <= 0 && myHp <= 0) DrawString(790, BOTTOM_PANEL_Y + 85, "GAME OVER", COL_DANGER());
                         else DrawFormatString(790, BOTTOM_PANEL_Y + 85, COL_TEXT_SUB(), "残機 %d / 体力 %d", mySt, myHp);
 
-                        DrawString(950, BOTTOM_PANEL_Y + 85, "【相手に適用】", COL_DANGER());
+                        DrawString(950, BOTTOM_PANEL_Y + 85, "【相手に反映】", COL_DANGER());
                         if (enSt <= 0 && enHp <= 0) DrawString(1090, BOTTOM_PANEL_Y + 85, "撃破", COL_WARN());
-                        else DrawFormatString(1090, BOTTOM_PANEL_Y + 85, COL_TEXT_SUB(), "残機 %d / 体力 %d", enSt, enHp);
+                        else DrawFormatString(1090, BOTTOM_PANEL_Y + 85, COL_TEXT_SUB(), "残機 %d | 体力 %d", enSt, enHp);
 
                         if (disp_aOp == '/') {
-                            DrawFormatString(650, BOTTOM_PANEL_Y + 115, COL_SAFE(), "★ 座標(%d, %d)に【自分】の陣地を作成！", disp_aNum, disp_tNum);
-                            DrawFormatString(950, BOTTOM_PANEL_Y + 115, COL_DANGER(), "★ 座標(%d, %d)に【相手】の陣地を作成！", disp_aNum, disp_tNum);
+                            DrawFormatString(650, BOTTOM_PANEL_Y + 115, COL_SAFE(), "座標(%d, %d)に【自分】のワープ設置！", disp_aNum, disp_tNum);
+                            DrawFormatString(950, BOTTOM_PANEL_Y + 115, COL_DANGER(), "座標(%d, %d)に【相手】のワープ設置！", disp_aNum, disp_tNum);
                         }
                     }
                 }
@@ -1352,17 +1359,17 @@ namespace App {
 
                         if (stockChange < 0) DrawFormatString(620, BOTTOM_PANEL_Y + 82, COL_DANGER(), "▼ 攻撃！ %s の【 残機を%d 】、体力を [%d] にします", targetName.c_str(), stockChange, simulatedHp);
                         else if (stockChange > 0) DrawFormatString(620, BOTTOM_PANEL_Y + 82, COL_SAFE(), "▼ 回復！ %s の【 残機を+%d 】、体力を [%d] にします", targetName.c_str(), stockChange, simulatedHp);
-                        else DrawFormatString(620, BOTTOM_PANEL_Y + 82, COL_TEXT_SUB(), "▼ 変化！ %s の体力を [%d] に変更", targetName.c_str(), simulatedHp);
+                        else DrawFormatString(620, BOTTOM_PANEL_Y + 82, COL_TEXT_SUB(), "▼ 反映！ %s の体力を [%d] に", targetName.c_str(), simulatedHp);
 
                         if (disp_aOp == '/') {
                             unsigned int warpCol = isHoverSelf ? COL_SAFE() : COL_DANGER();
-                            if (isCleanDivide) DrawFormatString(620, BOTTOM_PANEL_Y + 112, warpCol, "★ さらに座標(%d, %d)に【%s】の陣地を作成！", disp_aNum, disp_tNum, targetName.c_str());
-                            else DrawFormatString(620, BOTTOM_PANEL_Y + 112, warpCol, "★ 座標(%d, %d)に【%s】の陣地を作成！ (※体力変動なし)", disp_aNum, disp_tNum, targetName.c_str());
+                            if (isCleanDivide) DrawFormatString(620, BOTTOM_PANEL_Y + 112, warpCol, "★ さらに座標(%d, %d)に【%s】のワープ設置！", disp_aNum, disp_tNum, targetName.c_str());
+                            else DrawFormatString(620, BOTTOM_PANEL_Y + 112, warpCol, "座標(%d, %d)に【%s】のワープ設置！ (※体力変動なし)", disp_aNum, disp_tNum, targetName.c_str());
                         }
                     }
                     else {
                         DrawString(770, BOTTOM_PANEL_Y + 82, "適用する対象を選択してください", GetColor(120, 120, 130));
-                        if (disp_aOp == '/') DrawFormatString(770, BOTTOM_PANEL_Y + 112, COL_INFO(), "★ 実行時、選択した対象に陣地が与えられます！");
+                        if (disp_aOp == '/') DrawFormatString(770, BOTTOM_PANEL_Y + 112, COL_INFO(), "実行時、選択した対象にワープ設置！");
                     }
                 }
             }
@@ -1427,13 +1434,13 @@ namespace App {
             SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
 
             SetFontSize(160);
-            const char* finishText = "GAME SET !!";
+            const char* finishText = "ゲーム終了 !!";
             int textW = GetDrawStringWidth(finishText, (int)strlen(finishText));
             DrawString(SCREEN_W / 2 - textW / 2, SCREEN_H / 2 - 100, finishText, COL_TEXT_MAIN());
 
-            if (m_finishTimer > 60) {
+            if (m_finishTimer > 30) {
                 SetFontSize(40);
-                const char* nextText = ">> CLICK TO NEXT <<";
+                const char* nextText = ">> クリックしてください <<";
                 int nw = GetDrawStringWidth(nextText, (int)strlen(nextText));
                 DrawString(SCREEN_W / 2 - nw / 2, SCREEN_H / 2 + 100, nextText, COL_TEXT_SUB());
             }
