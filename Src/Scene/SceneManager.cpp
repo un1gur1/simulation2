@@ -3,6 +3,7 @@
 #include "TitleScene.h"
 #include "ResultScene.h"
 #include "PauseMenu.h"
+#include "../Input/InputManager.h"
 #include <utility>
 
 namespace App {
@@ -105,20 +106,31 @@ namespace App {
         // ==========================================
         // ESCキーによるポーズトグル
         // ==========================================
+      // ==========================================
+        // ESCキー ＆ マウスによるポーズトグル
+        // ==========================================
         static bool prevEsc = false;
-        if (CheckHitKey(KEY_INPUT_ESCAPE) == 1) {
-            if (!prevEsc) {
-                // キーが押された瞬間だけトグル（連続入力防止）
-                isPaused_ = !isPaused_;
+        bool escHit = (CheckHitKey(KEY_INPUT_ESCAPE) == 1);
 
-                // ポーズした瞬間にメニューを初期化
-                if (isPaused_ && pauseMenu_)
-                    pauseMenu_->Init();
+        // GAMEシーン中のみ、右上(1740, 10)～(1900, 60)のクリックを検知
+        bool mouseHit = false;
+        if (sceneId_ == SCENE_ID::GAME) {
+            auto& input = InputManager::GetInstance();
+            if (input.IsMouseLeftTrg()) {
+                Vector2 m = input.GetMousePos();
+                if (m.x >= 1740 && m.x <= 1900 && m.y >= 10 && m.y <= 60) mouseHit = true;
             }
-            prevEsc = true;  // 押されている間はtrue
+        }
+
+        if (escHit || mouseHit) {
+            if (!prevEsc || mouseHit) {
+                isPaused_ = !isPaused_;
+                if (isPaused_ && pauseMenu_) pauseMenu_->Init();
+            }
+            prevEsc = escHit; // マウスクリック時はキー押しっぱなし防止のフラグを更新しない
         }
         else {
-            prevEsc = false;  // 離されたらリセット
+            prevEsc = false;
         }
 
         // ==========================================

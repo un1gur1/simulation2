@@ -8,6 +8,7 @@
 #include "../Object/Map/MapGrid.h"
 #include "../Object/Unit/Player/Player.h"
 #include "../Object/Unit/Enemy/Enemy.h"
+#include "../Scene/PauseMenu.h"
 
 namespace App {
 
@@ -159,6 +160,9 @@ namespace App {
 
         void AddLog(const std::string& message);    // ログ追加
 
+        int m_maxTurns;
+        bool m_isPaused;
+        PauseMenu m_pauseMenu;
         // ==========================================
         // 内部処理メソッド: 入力処理
         // ==========================================
