@@ -79,7 +79,7 @@ namespace App {
         SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
 
         // タイトルロゴ
-        const char* resultMain = m_isWin ? "MISSION CLEAR" : "MISSION FAILED";
+        const char* resultMain = m_isWin ? "勝利" : "敗北";
         SetFontSize(100);
         int textW = GetDrawStringWidth(resultMain, (int)strlen(resultMain));
         DrawString(sw / 2 - textW / 2, 120, resultMain, GetColor(255, 255, 255));
@@ -110,18 +110,17 @@ namespace App {
         sprintf_s(timeStr, "%02d : %02d", totalSec / 60, totalSec % 60);
 
         // ★ s_stats ではなく m_stats を使う
-        drawStat(40, "CLEAR TIME", timeStr);
-        drawStat(120, "TOTAL TURNS", std::to_string(m_stats.totalTurns));
-        drawStat(200, "TOTAL MOVES", std::to_string(m_stats.totalMoves));
-        drawStat(280, "OPERATORS USED", std::to_string(m_stats.totalOpsUsed));
-        drawStat(360, "MAX DAMAGE / SCORE", std::to_string(m_stats.maxDamage), true);
-
+        drawStat(40, "クリアタイム", timeStr);
+        drawStat(120, "総ターン数", std::to_string(m_stats.totalTurns));
+        drawStat(200, "総移動数", std::to_string(m_stats.totalMoves));
+        drawStat(280, "使用演算子数", std::to_string(m_stats.totalOpsUsed));
+        drawStat(360, "最大ダメージ / スコア", std::to_string(m_stats.maxDamage), true);
         // 操作ガイド
         if (m_frameCount > 90) {
             int pulseAlpha = 100 + (int)(std::sin(m_frameCount / 15.0f) * 100);
             SetDrawBlendMode(DX_BLENDMODE_ALPHA, pulseAlpha);
             SetFontSize(30);
-            const char* prompt = ">> CLICK OR SPACE TO RETURN TITLE <<";
+            const char* prompt = ">>クリックかスペース <<";
             int pW = GetDrawStringWidth(prompt, (int)strlen(prompt));
             DrawString(sw / 2 - pW / 2, sh - 150, prompt, GetColor(200, 200, 200));
             SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
