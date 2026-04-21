@@ -58,7 +58,8 @@ namespace App {
         void SetPlayer2Settings(bool isNPC, int startNum, int startX, int startY) {
             is2P_NPC_ = isNPC; p2StartNum_ = startNum; p2StartX_ = startX; p2StartY_ = startY;
         }
-
+        void SetStageIndex(int idx) { m_stageIndex = idx; }
+        int GetStageIndex() const { return m_stageIndex; }
         bool Is1PNPC() const { return is1P_NPC_; }
         bool Is2PNPC() const { return is2P_NPC_; }
         int Get1PStartNum() const { return p1StartNum_; }
@@ -105,7 +106,7 @@ namespace App {
         int  p1StartY_;
         int  p2StartX_;
         int  p2StartY_;
-
+        int m_stageIndex = 0;
         // š’Ç‰ÁFíÑ•Û—p‚Ìƒƒ“ƒo•Ï”
         bool m_lastIsWin = false;
         BattleStats m_lastStats = { 0, 0, 0, 0, 0 };

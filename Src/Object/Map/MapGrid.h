@@ -44,7 +44,7 @@ namespace App {
 
         // ★ モード別の湧き間隔（クラシック: 3, ゼロワン: 2）
         int m_spawnInterval;
-
+        int m_stageIndex = 0;
         // ★ モード別の初期化処理
         void InitializeSpawnPoints();
         void InitializeClassicSpawns();
@@ -54,8 +54,7 @@ namespace App {
         explicit MapGrid(int tileSize = 80, Vector2 offset = Vector2(100, 100));
         ~MapGrid() = default;
 
-        // ★ バトルモードを設定するメソッド
-        void SetRuleMode(BattleRuleMode mode);
+        void SetRuleModeAndStage(BattleRuleMode mode, int stageIndex);
 
         // 新追加：ターン数のゲッター
         int GetTurnsUntilNextSpawn() const { return m_spawnInterval - m_currentCycleTick; }

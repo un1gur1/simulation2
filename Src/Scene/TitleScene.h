@@ -13,6 +13,7 @@ namespace App {
             SELECT_SCORE,
             SELECT_P1_TYPE,
             SELECT_P2_TYPE,
+            SELECT_STAGE,
             CUSTOM_P1_START,
             CUSTOM_P2_START
         };
@@ -23,14 +24,13 @@ namespace App {
         // ==========================================
         static constexpr int GRID_SIZE = 9;
 
-        static constexpr int DEF_P1_HP = 3;
-        static constexpr int DEF_P1_X = 1;
-        static constexpr int DEF_P1_Y = 1;
+        static constexpr int DEF_P1_HP = 5;
+        static constexpr int DEF_P1_X = 3;
+        static constexpr int DEF_P1_Y = 3;
 
-        static constexpr int DEF_P2_HP = 3;
-        static constexpr int DEF_P2_X = 9;
-        static constexpr int DEF_P2_Y = 9;
-
+        static constexpr int DEF_P2_HP = 5;
+        static constexpr int DEF_P2_X = 7;
+        static constexpr int DEF_P2_Y = 7;
         // ==========================================
         // ★ プレイヤー設定構造体
         // ==========================================
@@ -48,7 +48,7 @@ namespace App {
         int m_modeCursor;
         int m_stocksCursor;    
         int m_scoreCursor;
-
+        int m_stageCursor;
         // 1Pと2Pの設定を配列で一括管理 (インデックス0=1P, 1=2P)
         PlayerConfig m_players[2];
 

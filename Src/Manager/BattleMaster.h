@@ -84,6 +84,9 @@ namespace App {
         std::vector<std::string> m_actionLog;
         void AddLog(const std::string& message);
 
+		int g_aiStayCount2P = 0; // 2Pが連続で待機した回数（AIの行動選択に使用）
+		int g_aiStayCount1P = 0; // 1Pが連続で待機した回数（AIの行動選択に使用）
+
         bool CanMove(int number, char op, IntVector2 start, IntVector2 target, int& outCost) const;
         void ApplyBattleResult(UnitBase& unit, const Fraction& resultFrac, int intRes, char op);
 

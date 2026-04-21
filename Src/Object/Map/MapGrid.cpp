@@ -6,125 +6,196 @@
 
 namespace App {
 
+    // ==========================================
+    // コンストラクタ: マップグリッドの基本設定
+    // ==========================================
     MapGrid::MapGrid(int tileSize, Vector2 offset)
-        : m_tileSize(tileSize)
-        , m_offset(offset)
+        : m_tileSize(tileSize)           // マス目1個のサイズ（ピクセル）
+        , m_offset(offset)               // マップ全体の左上座標
         , m_ruleMode(BattleRuleMode::CLASSIC)
-        , m_totalTurns(0)
-        , m_currentCycleTick(0)
-        , m_spawnInterval(3)
+        , m_totalTurns(0)                // 経過ターン数
+        , m_currentCycleTick(0)          // アイテム再出現カウンター
+        , m_spawnInterval(3)             // アイテム再出現間隔（ターン数）
     {
-        // 初期化は SetRuleMode で行う
     }
 
-    void MapGrid::SetRuleMode(BattleRuleMode mode) {
-        m_ruleMode = mode;
-
-        // モード別の湧き間隔を設定
-        if (m_ruleMode == BattleRuleMode::CLASSIC) {
-            m_spawnInterval = 3;  // クラシック: 3ターンごと
-        }
-        else {
-            m_spawnInterval = 2;  // ゼロワン: 2ターンごと
-        }
-
-        // モード別の初期化を実行
-        InitializeSpawnPoints();
-    }
-
+    // ==========================================
+    // 出現地点の初期化: ルールモードに応じた配置
+    // ==========================================
     void MapGrid::InitializeSpawnPoints() {
         m_spawnPoints.clear();
 
         if (m_ruleMode == BattleRuleMode::CLASSIC) {
-            InitializeClassicSpawns();
+            InitializeClassicSpawns();   // クラシックモード用配置
         }
         else {
-            InitializeZeroOneSpawns();
+            InitializeZeroOneSpawns();   // ゼロワンモード用配置
         }
     }
 
+    // ==========================================
+    // ルールモード＆ステージ設定
+    // 引数: mode - ゲームルール / stageIndex - ステージ番号（0~2）
+    // ==========================================
+    void MapGrid::SetRuleModeAndStage(BattleRuleMode mode, int stageIndex) {
+        m_ruleMode = mode;
+        m_stageIndex = stageIndex;
+
+        // アイテム再出現間隔の設定（モード別）
+        if (m_ruleMode == BattleRuleMode::CLASSIC) {
+            m_spawnInterval = 3;  // クラシック: 3ターンごと
+        }
+        else {
+            m_spawnInterval = 2;  // ゼロワン: 2ターンごと（テンポ重視）
+        }
+
+        // ステージレイアウト初期化
+        InitializeSpawnPoints();
+    }
+
+    // ==========================================
+    // クラシックモードのアイテム配置
+    // 特徴: ステージ3のみアイテムが時間で循環する
+    // ==========================================
     void MapGrid::InitializeClassicSpawns() {
-        // ★ クラシックモード（ノーマルバトル）
-        // 【配置戦略】
-        // - 1~3: 縦横移動（3マス/2マス/1マス） → 十字交差点に配置
-        // - 4~6: 斜め移動（3マス/2マス/1マス） → 対角線上に配置
-        // - 7~9: 全方向移動（3マス/2マス/1マス） → 中央・中間地点に配置
-        // - '÷' は移動の中継点となる戦略的位置に配置
-
+        m_spawnPoints.clear();
         struct PointDef { int x, y; char op; };
-        PointDef defs[] = {
-            // 【中央十字エリア】- 縦横移動（1~3）が最も効率的にアクセス可能
-            { 4, 1, '+' },  // 上辺中央：スタート地点から縦移動で到達しやすい
-            { 4, 7, '+' },  // 下辺中央：同上
-            { 1, 4, '-' },  // 左辺中央：横移動で到達しやすい
-            { 7, 4, '-' },  // 右辺中央：同上
+        std::vector<PointDef> defs;
 
-            // 【四隅】- 斜め移動（4~6）が最も効率的、全方向移動（7~9）も2手で到達
-            { 2, 2, '*' },  // 左上：斜め移動の要所、攻撃的な'*'を配置
-            { 6, 2, '/' },  // 右上：陣地構築用、安全な位置
-            { 2, 6, '/' },  // 左下：同上
-            { 6, 6, '*' },  // 右下：斜め移動の要所、攻撃的な'*'を配置
+        if (m_stageIndex == 0) {
+            // ==========================================
+            // 【STAGE 1】標準配置: バランス重視
+            // マイナスが多めで攻撃的な展開が有利
+            // ==========================================
+            defs = {
+                { 4, 1, '*' }, { 4, 7, '+' }, { 1, 4, '-' }, { 7, 4, '-' },
+                { 2, 2, '-' }, { 6, 2, '/' }, { 2, 6, '/' }, { 6, 6, '-' },
+                { 4, 4, '+' }, { 3, 3, '-' }, { 5, 5, '-' }
+            };
+        }
+        else if (m_stageIndex == 1) {
+            // ==========================================
+            // 【STAGE 2】中央密集: マイナス祭り
+            // 中央での激しい攻防が展開される
+            // ==========================================
+            defs = {
+                // 外周8方向
+                { 4, 0, '-' }, { 7, 1, '-' }, { 8, 4, '-' }, { 7, 7, '-' },
+                { 4, 8, '-' }, { 1, 7, '-' }, { 0, 4, '-' }, { 1, 1, '-' },
 
-            // 【中央】- 全方向からアクセス可能な最重要争奪地点
-            { 4, 4, '+' },  // 中心：全ての数値から最もアクセスしやすい汎用演算子
+                // 中間層8方向
+                { 4, 2, '-' }, { 6, 2, '-' }, { 6, 4, '-' }, { 6, 6, '-' },
+                { 4, 6, '-' }, { 2, 6, '-' }, { 2, 4, '-' }, { 2, 2, '-' },
 
-            // 【副次的戦略ポイント】- 斜め＋縦横の中間地点
-            { 3, 3, '-' },  // 左上寄り：低コストで左上隅の'*'への中継点
-            { 5, 5, '-' },  // 右下寄り：低コストで右下隅の'*'への中継点
-        };
+                // 中央
+                { 4, 4, '-' }
+            };
+        }
+        else {
+            // ==========================================
+            // 【STAGE 3】円形配置: 時間で循環する特殊ステージ
+            // アイテムが (+→-→*→/) の順で自動変化
+            // 取るタイミングが勝敗を分ける
+            // ==========================================
+            defs = {
+                // 外周8方向（プラススタート）
+                { 4, 0, '+' }, { 7, 1, '+' }, { 8, 4, '+' }, { 7, 7, '+' },
+                { 4, 8, '+' }, { 1, 7, '+' }, { 0, 4, '+' }, { 1, 1, '+' },
+
+                // 中間層8方向（マイナススタート）
+                { 4, 2, '-' }, { 6, 2, '-' }, { 6, 4, '-' }, { 6, 6, '-' },
+                { 4, 6, '-' }, { 2, 6, '-' }, { 2, 4, '-' }, { 2, 2, '-' },
+
+                // 中央（掛け算スタート）
+                { 4, 4, '*' }
+            };
+        }
+
+        // ステージ3専用: 循環シーケンス
+        std::vector<char> cycleSeq = { '+', '-', '*', '/' };
 
         for (const auto& d : defs) {
             SpawnPoint sp;
             sp.pos = { d.x, d.y };
-            // ★ クラシックモードでは単一の演算子を繰り返す
-            sp.sequence = { d.op };
-            sp.currentIndex = 0;
-            sp.currentSymbol = d.op;
-            sp.isAvailable = true;
+
+            if (m_stageIndex == 2) {
+                // ステージ3: 循環モード
+                sp.sequence = cycleSeq;
+
+                // 初期記号から開始位置を決定
+                auto it = std::find(cycleSeq.begin(), cycleSeq.end(), d.op);
+                if (it != cycleSeq.end()) {
+                    sp.currentIndex = (int)std::distance(cycleSeq.begin(), it);
+                }
+                else {
+                    sp.currentIndex = 0;
+                }
+            }
+            else {
+                // ステージ1,2: 固定モード（同じ記号がずっと出る）
+                sp.sequence = { d.op };
+                sp.currentIndex = 0;
+            }
+
+            sp.currentSymbol = sp.sequence[sp.currentIndex];
+            sp.isAvailable = true;  // 初期状態: 取得可能
             m_spawnPoints.push_back(sp);
         }
     }
 
+    // ==========================================
+    // ゼロワンモードのアイテム配置
+    // 特徴: 全ステージで (+→-→*→/→+→-) の6段階循環
+    // ==========================================
     void MapGrid::InitializeZeroOneSpawns() {
-        // ★ ゼロワンモード（カウントバトル）
-        // 【配置戦略】
-        // - スコア調整に必須の '+', '-' を中央・アクセスしやすい位置に多数配置
-        // - '*' は倍率調整用に中間地点へ配置
-        // - '/' は分数スコア操作と陣地構築の二刀流
-        // - ローテーション制で戦略性を高める
-
-        // ★ '/' を追加したシーケンス
+        m_spawnPoints.clear();
         std::vector<char> zeroOneSeq = { '+', '-', '*', '/', '+', '-' };
 
         struct PointDef { int x, y, startIdx; };
-        PointDef defs[] = {
-            // 【中央十字ライン】- 最もアクセスしやすい位置に '+', '-' を集中配置
-            { 4, 2, 0 },  // 上寄り: + スタート
-            { 4, 6, 1 },  // 下寄り: - スタート
-            { 2, 4, 1 },  // 左寄り: - スタート
-            { 6, 4, 0 },  // 右寄り: + スタート
+        std::vector<PointDef> defs;
 
-            // 【内側四隅】- 斜め移動での中継点、戦略的な争奪ポイント
-            { 3, 3, 0 },  // 左上: + スタート
-            { 5, 3, 1 },  // 右上: - スタート
-            { 3, 5, 2 },  // 左下: * スタート
-            { 5, 5, 3 },  // 右下: / スタート
+        if (m_stageIndex == 0) {
+            // ==========================================
+            // 【STAGE 1】標準配置: 各地点で異なる開始位置
+            // 17個のアイテムでバランスよく分散
+            // ==========================================
+            defs = {
+                { 4, 2, 0 }, { 4, 6, 1 }, { 2, 4, 1 }, { 6, 4, 0 },
+                { 3, 3, 0 }, { 5, 3, 1 }, { 3, 5, 2 }, { 5, 5, 3 },
+                { 2, 2, 4 }, { 6, 2, 5 }, { 2, 6, 3 }, { 6, 6, 2 },
+                { 4, 4, 2 }, { 4, 1, 0 }, { 4, 7, 4 }, { 1, 4, 1 }, { 7, 4, 5 }
+            };
+        }
+        else if (m_stageIndex == 1) {
+            // ==========================================
+            // 【STAGE 2】密集配置: 全てマイナススタート
+            // 中央での取り合いが激化
+            // ==========================================
+            defs = {
+                // 外周8方向（全て index=1 でマイナススタート）
+                { 4, 0, 1 }, { 7, 1, 1 }, { 8, 4, 1 }, { 7, 7, 1 },
+                { 4, 8, 1 }, { 1, 7, 1 }, { 0, 4, 1 }, { 1, 1, 1 },
 
-            // 【外側四隅】- 移動コストは高いが、陣取り要素として重要
-            { 2, 2, 4 },  // 左上: + スタート
-            { 6, 2, 5 },  // 右上: - スタート
-            { 2, 6, 3 },  // 左下: / スタート
-            { 6, 6, 2 },  // 右下: * スタート
+                // 中間層8方向（同じくマイナススタート）
+                { 4, 2, 1 }, { 6, 2, 1 }, { 6, 4, 1 }, { 6, 6, 1 },
+                { 4, 6, 1 }, { 2, 6, 1 }, { 2, 4, 1 }, { 2, 2, 1 },
 
-            // 【中央争奪ポイント】- 全方向からアクセス可能
-            { 4, 4, 2 },  // 中心: * スタート（倍率調整の要）
-
-            // 【辺の追加ポイント】- 数値が低い時でも到達しやすい位置
-            { 4, 1, 0 },  // 上辺: + スタート
-            { 4, 7, 4 },  // 下辺: + スタート
-            { 1, 4, 1 },  // 左辺: - スタート
-            { 7, 4, 5 },  // 右辺: - スタート
-        };
+                // 中央（マイナススタート）
+                { 4, 4, 1 }
+            };
+        }
+        else {
+            // ==========================================
+            // 【STAGE 3】四隅散開: 遠距離移動が必須
+            // 移動コスト管理が重要になる高難度ステージ
+            // ==========================================
+            defs = {
+                { 1, 1, 0 }, { 7, 1, 1 }, { 1, 7, 1 }, { 7, 7, 0 },
+                { 4, 1, 2 }, { 4, 7, 3 }, { 1, 4, 4 }, { 7, 4, 5 },
+                { 2, 2, 0 }, { 6, 2, 1 }, { 2, 6, 1 }, { 6, 6, 0 },
+                { 4, 4, 3 }  // 中央: 割り算スタート
+            };
+        }
 
         for (const auto& d : defs) {
             SpawnPoint sp;
@@ -136,38 +207,61 @@ namespace App {
             m_spawnPoints.push_back(sp);
         }
     }
+
+    // ==========================================
+    // アイテム取得処理
+    // 戻り値: 取得した記号（取得不可なら '\0'）
+    // ==========================================
     char MapGrid::PickUpItem(int x, int y) {
         for (auto& sp : m_spawnPoints) {
             if (sp.pos.x == x && sp.pos.y == y && sp.isAvailable) {
                 char picked = sp.currentSymbol;
-                sp.isAvailable = false; // 取られた状態にする
+                sp.isAvailable = false;  // 取得済み状態にする
 
-                // 次のアイテムへ進める
-                sp.currentIndex = (sp.currentIndex + 1) % sp.sequence.size();
-                sp.currentSymbol = sp.sequence[sp.currentIndex];
+                // クラシックのステージ3「以外」は取得時に次へ進める
+                // ステージ3は時間経過でのみ進むため、ここでは進めない
+                if (!(m_ruleMode == BattleRuleMode::CLASSIC && m_stageIndex == 2)) {
+                    sp.currentIndex = (sp.currentIndex + 1) % sp.sequence.size();
+                    sp.currentSymbol = sp.sequence[sp.currentIndex];
+                }
 
                 return picked;
             }
         }
-        return '\0';
+        return '\0';  // 取得失敗
     }
 
+    // ==========================================
+    // ターン更新: アイテムの再出現と循環
+    // ==========================================
     void MapGrid::UpdateTurn() {
         m_totalTurns++;
         m_currentCycleTick++;
 
+        // 再出現タイミング判定（3または2ターンごと）
         if (m_currentCycleTick >= m_spawnInterval) {
             m_currentCycleTick = 0;
 
             for (auto& sp : m_spawnPoints) {
-                // 取られている（空の）場所だけ、次を出現させる
+                // 取得済みのアイテムを再出現
                 if (!sp.isAvailable) {
                     sp.isAvailable = true;
+                }
+
+                // クラシックのステージ3のみ特殊処理:
+                // 取られていなくても定期的に記号が変化する
+                if (m_ruleMode == BattleRuleMode::CLASSIC && m_stageIndex == 2) {
+                    sp.currentIndex = (sp.currentIndex + 1) % sp.sequence.size();
+                    sp.currentSymbol = sp.sequence[sp.currentIndex];
                 }
             }
         }
     }
 
+    // ==========================================
+    // 座標変換: 画面座標→グリッド座標
+    // 用途: マウスカーソル位置からマス目を特定
+    // ==========================================
     IntVector2 MapGrid::ScreenToGrid(const Vector2& pos) const {
         return {
             static_cast<int>((pos.x - m_offset.x) / m_tileSize),
@@ -175,6 +269,10 @@ namespace App {
         };
     }
 
+    // ==========================================
+    // マス目の中心座標取得
+    // 用途: ユニット・アイテムの描画位置計算
+    // ==========================================
     Vector2 MapGrid::GetCellCenter(int x, int y) const {
         return {
             m_offset.x + x * m_tileSize + m_tileSize / 2.0f,
@@ -182,10 +280,17 @@ namespace App {
         };
     }
 
+    // ==========================================
+    // 範囲内判定: 指定座標が9x9グリッド内か
+    // ==========================================
     bool MapGrid::IsWithinBounds(int x, int y) const {
         return x >= 0 && x < 9 && y >= 0 && y < 9;
     }
 
+    // ==========================================
+    // アイテム検索: 指定座標のアイテム記号を取得
+    // 戻り値: アイテム記号（存在しない or 取得済みなら '\0'）
+    // ==========================================
     char MapGrid::GetItemAt(int x, int y) const {
         for (const auto& sp : m_spawnPoints) {
             if (sp.pos.x == x && sp.pos.y == y && sp.isAvailable) {
@@ -195,100 +300,116 @@ namespace App {
         return '\0';
     }
 
+    // ==========================================
+    // マップ描画: グリッド＆アイテムの表示
+    // ==========================================
     void MapGrid::Draw() const {
-        // --- 1. 盤面描画 ---
-        // 紺色ベースの画面に完全に馴染む、深く静かなマス目
-        unsigned int lineCol = GetColor(40, 45, 60);
-        unsigned int fillCol = GetColor(15, 18, 25);
+        // ==========================================
+        // 1. グリッド描画: 9x9のマス目
+        // ==========================================
+        unsigned int lineCol = GetColor(40, 45, 60);   // 枠線の色（暗い青）
+        unsigned int fillCol = GetColor(15, 18, 25);   // マス目の塗りつぶし色
 
         for (int y = 0; y < 9; y++) {
             for (int x = 0; x < 9; x++) {
                 Vector2 pos = GetCellCenter(x, y);
-                // 四角形はジャギーが出ないのでそのままDrawBoxでOK
+                // 枠線
                 DrawBox((int)pos.x - 39, (int)pos.y - 39, (int)pos.x + 39, (int)pos.y + 39, lineCol, FALSE);
+                // 塗りつぶし
                 DrawBox((int)pos.x - 38, (int)pos.y - 38, (int)pos.x + 38, (int)pos.y + 38, fillCol, TRUE);
             }
         }
 
-        // --- 2. アイテム描画（高級盤面はめ込み ＆ ツルツルAA仕様） ---
+        // ==========================================
+        // 2. アイテム描画: 宝石風エフェクト
+        // ==========================================
         double time = GetNowCount() / 1000.0;
-        // ★ floatにして滑らかに脈動させる
-        float pulse = (float)(sin(time * 5.0) * 4.0);
+        float pulse = (float)(sin(time * 5.0) * 4.0);  // 脈動アニメーション
 
         for (const auto& sp : m_spawnPoints) {
             Vector2 basePos = GetCellCenter(sp.pos.x, sp.pos.y);
-            // ★ AA用に座標もfloatで保持
             float drawX = basePos.x;
             float drawY = basePos.y;
 
+            // --- 取得済みアイテムの表示（ホログラム） ---
             if (!sp.isAvailable) {
-                // ★ ホログラム（出現待ち）演出：ダークな盤面に浮かぶ電子予測
                 SetDrawBlendMode(DX_BLENDMODE_ADD, 120);
-                // ★ DrawCircleAAに変更（第4引数はポリゴン分割数。64でかなり綺麗）
                 DrawCircleAA(drawX, drawY, 22.0f + pulse / 2.0f, 64, GetColor(80, 100, 120), FALSE, 2.0f);
 
+                // 次に出現する記号を予告表示
+                char nextOp = sp.currentSymbol;
+                if (m_ruleMode == BattleRuleMode::CLASSIC && m_stageIndex == 2) {
+                    // ステージ3は次の記号を表示
+                    nextOp = sp.sequence[(sp.currentIndex + 1) % sp.sequence.size()];
+                }
+
                 SetFontSize(24);
-                char waitStr[2] = { sp.currentSymbol, '\0' };
+                char waitStr[2] = { nextOp, '\0' };
                 int tw = GetDrawStringWidth(waitStr, 1);
-                // 文字はボヤけないように int にキャスト
                 DrawString((int)drawX - tw / 2, (int)drawY - 12, waitStr, GetColor(100, 140, 180));
                 SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
                 continue;
             }
 
-            // アイテムの色決定（宝石のようなリッチで深い色合い）
+            // --- アイテムの色設定（宝石風） ---
             unsigned int itemCol, addCol, darkCol;
             if (sp.currentSymbol == '+') {
-                itemCol = GetColor(200, 30, 50);  // ルビー（赤）
+                // ルビー（赤）
+                itemCol = GetColor(200, 30, 50);
                 addCol = GetColor(255, 100, 100);
                 darkCol = GetColor(80, 10, 20);
             }
             else if (sp.currentSymbol == '-') {
-                itemCol = GetColor(30, 120, 220); // サファイア（青）
+                // サファイア（青）
+                itemCol = GetColor(30, 120, 220);
                 addCol = GetColor(100, 180, 255);
                 darkCol = GetColor(10, 30, 80);
             }
             else if (sp.currentSymbol == '*') {
-                itemCol = GetColor(40, 180, 60);  // エメラルド（緑）
+                // エメラルド（緑）
+                itemCol = GetColor(40, 180, 60);
                 addCol = GetColor(120, 255, 150);
                 darkCol = GetColor(15, 60, 20);
             }
             else {
-                itemCol = GetColor(180, 40, 200); // アメジスト（紫）
+                // アメジスト（紫）
+                itemCol = GetColor(180, 40, 200);
                 addCol = GetColor(220, 100, 255);
                 darkCol = GetColor(60, 10, 80);
             }
 
-            // ① 盤面に漏れ出すエネルギー（オーラ）
+            // --- 多層エフェクト描画 ---
+
+            // ① オーラ（盤面に漏れるエネルギー）
             for (int i = 0; i < 2; ++i) {
                 SetDrawBlendMode(DX_BLENDMODE_ALPHA, 60 - i * 20);
                 DrawCircleAA(drawX, drawY, 34.0f + i * 8.0f + pulse, 64, itemCol, TRUE);
             }
             SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
 
-            // ② アイテム本体（多層クリスタル構造）
-            DrawCircleAA(drawX, drawY, 28.0f, 64, darkCol, TRUE); // 外郭の暗い色
-            DrawCircleAA(drawX, drawY, 24.0f, 64, itemCol, TRUE); // メインカラー
+            // ② 本体（多層クリスタル構造）
+            DrawCircleAA(drawX, drawY, 28.0f, 64, darkCol, TRUE);  // 外郭（暗）
+            DrawCircleAA(drawX, drawY, 24.0f, 64, itemCol, TRUE);  // 本体
 
-            // ③ 加算合成で内部からの発光感
+            // ③ 内部発光（加算合成）
             SetDrawBlendMode(DX_BLENDMODE_ADD, 150);
             DrawCircleAA(drawX, drawY, 18.0f, 64, addCol, TRUE);
             SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
 
-            // ④ 盤面にはめ込まれているような硬質なリング
+            // ④ 硬質リング（はめ込み感）
             DrawCircleAA(drawX, drawY, 26.0f, 64, GetColor(200, 220, 255), FALSE, 2.0f);
 
-            // ⑤ 強い光沢
+            // ⑤ 光沢（左上のハイライト）
             SetDrawBlendMode(DX_BLENDMODE_ALPHA, 180);
             DrawCircleAA(drawX - 8.0f, drawY - 8.0f, 6.0f, 32, GetColor(255, 255, 255), TRUE);
             SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
 
-            // ⑥ 記号（ユニットに合わせて「白文字＋暗い影」に変更）
+            // ⑥ 記号（影付き白文字）
             SetFontSize(38);
             char symStr[2] = { sp.currentSymbol, '\0' };
             int tw = GetDrawStringWidth(symStr, 1);
 
-            // 彫り込まれている感のあるドロップシャドウ
+            // ドロップシャドウ（彫り込み感）
             DrawString((int)drawX - tw / 2 + 2, (int)drawY - 18 + 2, symStr, GetColor(20, 20, 30));
             // 本体文字（発光する白）
             DrawString((int)drawX - tw / 2, (int)drawY - 18, symStr, GetColor(255, 255, 255));
