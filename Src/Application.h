@@ -4,46 +4,70 @@
 
 namespace App {
 
+    // ==========================================
+    // Application: アプリケーション全体の管理クラス（シングルトン）
+    // 用途: DXライブラリ初期化・メインループ・ウィンドウ管理
+    // 責務: ゲームシステムの起動・実行・終了を統括
+    // ==========================================
     class Application {
     public:
-        // シングルトン操作
-        static void CreateInstance();
-        static Application* GetInstance();
-        static void DeleteInstance();
+        // ==========================================
+        // シングルトンパターン
+        // ゲーム全体で1つだけ存在
+        // ==========================================
+        static void CreateInstance();           // インスタンス生成
+        static Application* GetInstance();      // インスタンス取得
+        static void DeleteInstance();           // インスタンス削除
 
-        // ライフサイクル
-        bool Init();                // 初期化
-        bool IsInitFail() const;    // 初期化失敗フラグ
-        void Run();                 // 実行（メインループ）
-        void Delete();              // 解放
-        bool IsReleaseFail() const; // 解放失敗フラグ
+        // ==========================================
+        // ライフサイクル（外部から呼ばれる）
+        // ==========================================
+        bool Init();                            // 初期化
+        bool IsInitFail() const;                // 初期化失敗判定
+        void Run();                             // メインループ実行
+        void Delete();                          // 解放処理
+        bool IsReleaseFail() const;             // 解放失敗判定
 
     private:
+        // ==========================================
+        // シングルトン: コピー・ムーブ禁止
+        // ==========================================
         Application();
         ~Application();
-
-        // コピー禁止
         Application(const Application&) = delete;
         Application& operator=(const Application&) = delete;
 
-        // 既存ロジック
-        bool Initialize(); // 内部初期化
-        void Shutdown();   // 内部解放
-        void Update();
-        void Draw();
+        // ==========================================
+        // 内部処理
+        // ==========================================
+        bool Initialize();                      // DXライブラリ初期化
+        void Shutdown();                        // DXライブラリ終了
+        void Update();                          // 更新（毎フレーム）
+        void Draw();                            // 描画（毎フレーム）
 
-    private:
-        // ★追加：シングルトン用の静的インスタンス変数の宣言
+        // ==========================================
+        // シングルトンインスタンス
+        // ==========================================
         static Application* s_instance;
 
-        bool m_shouldQuit;
-        bool m_showInfo;
-        unsigned int m_frameCount;
-        int m_windowWidth;
-        int m_windowHeight;
+        // ==========================================
+        // ゲーム状態
+        // ==========================================
+        bool m_shouldQuit;                      // 終了フラグ
+        bool m_showInfo;                        // デバッグ情報表示フラグ
+        unsigned int m_frameCount;              // フレームカウンター
 
-        bool m_initFail;
-        bool m_releaseFail;
+        // ==========================================
+        // ウィンドウ設定
+        // ==========================================
+        int m_windowWidth;                      // ウィンドウ幅（1920）
+        int m_windowHeight;                     // ウィンドウ高さ（1080）
+
+        // ==========================================
+        // エラーフラグ
+        // ==========================================
+        bool m_initFail;                        // 初期化失敗フラグ
+        bool m_releaseFail;                     // 解放失敗フラグ
     };
 
 } // namespace App
