@@ -502,7 +502,7 @@ namespace App {
 
         // HLSLシェーダーによるサイバーグリッドエフェクト
         if (m_psHandle != -1 && m_cbHandle != -1) {
-            // シェーダーパラメータ設定
+            // 時間と解像度をシェーダーに渡してスクリーン空間エフェクトを生成
             float* cb = (float*)GetBufferShaderConstantBuffer(m_cbHandle);
             cb[0] = m_shaderTime;  // 時間（アニメーション）
             cb[1] = (float)sw;     // 画面幅

@@ -433,7 +433,6 @@ namespace App {
         std::queue<Vector2> screenPath;
         std::string myName = is1P ? "1P" : "2P";
 
-        // ★ 連続待機のカウント処理
         bool isStay = (bestTarget == myPos);
         if (isStay && !me->HasWarpNode(bestTarget)) {
             if (is1P) g_aiStayCount1P++; else g_aiStayCount2P++;
@@ -515,7 +514,6 @@ namespace App {
             long long myDistNow = std::abs((goal - myScoreNow).n / (goal - myScoreNow).d);
             long long enDistNow = std::abs((goal - enScoreNow).n / (goal - enScoreNow).d);
 
-            // ★ 修正：現在アイテムを持っていないなら「アイテムの真上に乗る」ことを絶対的に高評価する
             if (me.GetOp() == '\0') {
                 int bestItemScore = -99999;
                 for (int ix = 0; ix < 9; ++ix) {
@@ -562,7 +560,6 @@ namespace App {
                 score += (bestItemScore != -99999) ? bestItemScore : 0;
             }
 
-            // ★ 修正：移動後にアイテムを持っているなら「敵への接近と攻撃」を追加評価する
             if (virtualOp != '\0') {
                 int distToEnemy = std::abs(targetPos.x - ePos.x) + std::abs(targetPos.y - ePos.y);
                 score += (20 - distToEnemy) * 500;
