@@ -138,7 +138,9 @@ namespace App {
         int   m_cbHandle;               // 定数バッファハンドル
         float m_shaderTime;             // シェーダー時間
         float m_effectIntensity;        // エフェクト強度
-
+        // UIのアニメーション（イージング）用変数
+        float m_uiCursorX_1P = 0.0f;
+        float m_uiCursorX_2P = 0.0f;
         // ==========================================
         // 戦績データ
         // ==========================================

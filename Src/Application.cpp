@@ -2,7 +2,7 @@
 #include <DxLib.h>
 #include "Scene/SceneManager.h"
 #include "Input/InputManager.h"
-
+#include "Manager/ProceduralAudio.h"
 namespace App {
 
     // ==========================================
@@ -72,6 +72,8 @@ namespace App {
             m_initFail = true;
             return false;
         }
+
+       
 
         // 入力管理システムの初期化
         InputManager::GetInstance().Init();
@@ -175,7 +177,8 @@ namespace App {
 
         // DXライブラリの初期化
         if (DxLib_Init() == -1) return false;
-
+        // ProceduralAudioの初期化
+        ProceduralAudio::GetInstance().Init();
         // マウスカーソルを表示
         SetMouseDispFlag(TRUE);
 

@@ -2,6 +2,7 @@
 #include <DxLib.h>
 #include "SceneManager.h"
 #include "../Input/InputManager.h" 
+#include"../Manager/ProceduralAudio.h"
 #include <string>
 #include <cmath>
 #include "../../CyberGrid.h"
@@ -105,9 +106,11 @@ namespace App {
         m_stageCursor = 0;
 
         // プレイヤー設定の初期化
-        // m_players[0] = 1P, m_players[1] = 2P
         m_players[0] = { 0, 0, DEF_P1_HP, DEF_P1_X, DEF_P1_Y };
         m_players[1] = { 1, 0, DEF_P2_HP, DEF_P2_X, DEF_P2_Y };
+
+        // ProceduralAudioの初期化
+        ProceduralAudio::GetInstance().PlayBGM(true);
 
         // フォント作成（日本語対応）
         m_fontTitle = CreateFontToHandle("BIZ UD明朝 Medium", 100, 3, DX_FONTTYPE_ANTIALIASING);
@@ -134,6 +137,7 @@ namespace App {
     void TitleScene::Update() {
         auto& input = InputManager::GetInstance();
 
+        ProceduralAudio::GetInstance().Update();
         // ESCキーでゲーム終了
         if (input.IsTrgDown(KEY_INPUT_ESCAPE)) {
             m_shouldQuit = true;
@@ -194,6 +198,9 @@ namespace App {
         int backBtnW = 300;
         int backBtnH = 60;
 
+        // 戻るボタンのクリック判定を変数化しておく
+        bool isBackBtnClicked = mClick && HoverBox(backBtnX, backBtnY, backBtnW, backBtnH);
+
         // ==========================================
         // ステートマシン: メニュー階層の遷移制御
         // ==========================================
@@ -201,31 +208,35 @@ namespace App {
         // --- [1] スタート画面 ---
         if (m_state == MenuState::PRESS_START) {
             if (spaceTrg || mClick) {
+                ProceduralAudio::GetInstance().PlayPowerSE(9); // ★ 決定音
                 m_state = MenuState::SELECT_PLAYERS;
                 m_frameCount = 0;
             }
         }
         // --- [2] プレイヤー数選択（シングル / 2P対戦） ---
         else if (m_state == MenuState::SELECT_PLAYERS) {
-            // マウスホバー・クリック処理
             for (int i = 0; i < 2; ++i) {
                 if (HoverBox(menuCX - MENU_BOX_HALF_W, menuStartY + MENU_ITEM_BASE_Y + i * MENU_ITEM_STEP_Y - MENU_BOX_OFFSET_Y, MENU_BOX_HALF_W * 2, MENU_BOX_H)) {
-                    if (mouseMoved) m_playerCursor = i + 1;
+                    if (mouseMoved && m_playerCursor != i + 1) {
+                        m_playerCursor = i + 1;
+                        ProceduralAudio::GetInstance().PlayPowerSE(2); // ★ マウスホバー音
+                    }
                     if (mClick) { m_playerCursor = i + 1; spaceTrg = true; }
                 }
             }
+            if (upTrg || downTrg) {
+                m_playerCursor = (m_playerCursor == 1) ? 2 : 1;
+                ProceduralAudio::GetInstance().PlayPowerSE(2); // ★ キーボード移動音
+            }
 
-            // キーボード操作（上下でトグル）
-            if (upTrg || downTrg) m_playerCursor = (m_playerCursor == 1) ? 2 : 1;
-
-            // 戻る処理
-            if (bTrg || (mClick && HoverBox(backBtnX, backBtnY, backBtnW, backBtnH))) {
+            if (bTrg || isBackBtnClicked) {
+                ProceduralAudio::GetInstance().PlayErrorSE(); // ★ キャンセル音
                 m_state = MenuState::PRESS_START;
                 m_frameCount = 0;
             }
-            // 決定処理
             else if (spaceTrg) {
-                m_players[1].typeCursor = (m_playerCursor == 1) ? 1 : 0;  // 2PのCPU設定
+                ProceduralAudio::GetInstance().PlayPowerSE(9); // ★ 決定音
+                m_players[1].typeCursor = (m_playerCursor == 1) ? 1 : 0;
                 m_state = MenuState::SELECT_MODE;
                 m_frameCount = 0;
             }
@@ -234,20 +245,27 @@ namespace App {
         else if (m_state == MenuState::SELECT_MODE) {
             for (int i = 0; i < 2; ++i) {
                 if (HoverBox(menuCX - MENU_BOX_HALF_W, menuStartY + MENU_ITEM_BASE_Y + i * MENU_ITEM_STEP_Y - MENU_BOX_OFFSET_Y, MENU_BOX_HALF_W * 2, MENU_BOX_H)) {
-                    if (mouseMoved) m_modeCursor = i;
+                    if (mouseMoved && m_modeCursor != i) {
+                        m_modeCursor = i;
+                        ProceduralAudio::GetInstance().PlayPowerSE(2);
+                    }
                     if (mClick) { m_modeCursor = i; spaceTrg = true; }
                 }
             }
-            if (upTrg || downTrg) m_modeCursor = (m_modeCursor == 0) ? 1 : 0;
+            if (upTrg || downTrg) {
+                m_modeCursor = (m_modeCursor == 0) ? 1 : 0;
+                ProceduralAudio::GetInstance().PlayPowerSE(2);
+            }
 
-            if (bTrg || (mClick && HoverBox(backBtnX, backBtnY, backBtnW, backBtnH))) {
+            if (bTrg || isBackBtnClicked) {
+                ProceduralAudio::GetInstance().PlayErrorSE();
                 m_state = MenuState::SELECT_PLAYERS;
                 m_frameCount = 0;
             }
             else if (spaceTrg) {
-                // モードによって次の画面を分岐
-                if (m_modeCursor == 0) m_state = MenuState::SELECT_CLASSIC_STOCKS;  // クラシック→残機設定
-                else m_state = MenuState::SELECT_SCORE;  // ゼロワン→スコア設定
+                ProceduralAudio::GetInstance().PlayPowerSE(9);
+                if (m_modeCursor == 0) m_state = MenuState::SELECT_CLASSIC_STOCKS;
+                else m_state = MenuState::SELECT_SCORE;
                 m_frameCount = 0;
             }
         }
@@ -255,19 +273,23 @@ namespace App {
         else if (m_state == MenuState::SELECT_CLASSIC_STOCKS) {
             for (int i = 0; i < 3; ++i) {
                 if (HoverBox(menuCX - MENU_BOX_HALF_W, menuStartY + MENU_ITEM_BASE_Y + i * MENU_ITEM_STEP_Y - MENU_BOX_OFFSET_Y, MENU_BOX_HALF_W * 2, MENU_BOX_H)) {
-                    if (mouseMoved) m_stocksCursor = i;
+                    if (mouseMoved && m_stocksCursor != i) {
+                        m_stocksCursor = i;
+                        ProceduralAudio::GetInstance().PlayPowerSE(2);
+                    }
                     if (mClick) { m_stocksCursor = i; spaceTrg = true; }
                 }
             }
-            // 上下でループ（0→2→1→0...）
-            if (upTrg) { m_stocksCursor--; if (m_stocksCursor < 0) m_stocksCursor = 2; }
-            if (downTrg) { m_stocksCursor++; if (m_stocksCursor > 2) m_stocksCursor = 0; }
+            if (upTrg) { m_stocksCursor--; if (m_stocksCursor < 0) m_stocksCursor = 2; ProceduralAudio::GetInstance().PlayPowerSE(2); }
+            if (downTrg) { m_stocksCursor++; if (m_stocksCursor > 2) m_stocksCursor = 0; ProceduralAudio::GetInstance().PlayPowerSE(2); }
 
-            if (bTrg || (mClick && HoverBox(backBtnX, backBtnY, backBtnW, backBtnH))) {
+            if (bTrg || isBackBtnClicked) {
+                ProceduralAudio::GetInstance().PlayErrorSE();
                 m_state = MenuState::SELECT_MODE;
                 m_frameCount = 0;
             }
             else if (spaceTrg) {
+                ProceduralAudio::GetInstance().PlayPowerSE(9);
                 m_state = MenuState::SELECT_P1_TYPE;
                 m_frameCount = 0;
             }
@@ -276,18 +298,23 @@ namespace App {
         else if (m_state == MenuState::SELECT_SCORE) {
             for (int i = 0; i < 3; ++i) {
                 if (HoverBox(menuCX - MENU_BOX_HALF_W, menuStartY + MENU_ITEM_BASE_Y + i * MENU_ITEM_STEP_Y - MENU_BOX_OFFSET_Y, MENU_BOX_HALF_W * 2, MENU_BOX_H)) {
-                    if (mouseMoved) m_scoreCursor = i;
+                    if (mouseMoved && m_scoreCursor != i) {
+                        m_scoreCursor = i;
+                        ProceduralAudio::GetInstance().PlayPowerSE(2);
+                    }
                     if (mClick) { m_scoreCursor = i; spaceTrg = true; }
                 }
             }
-            if (upTrg) { m_scoreCursor--; if (m_scoreCursor < 0) m_scoreCursor = 2; }
-            if (downTrg) { m_scoreCursor++; if (m_scoreCursor > 2) m_scoreCursor = 0; }
+            if (upTrg) { m_scoreCursor--; if (m_scoreCursor < 0) m_scoreCursor = 2; ProceduralAudio::GetInstance().PlayPowerSE(2); }
+            if (downTrg) { m_scoreCursor++; if (m_scoreCursor > 2) m_scoreCursor = 0; ProceduralAudio::GetInstance().PlayPowerSE(2); }
 
-            if (bTrg || (mClick && HoverBox(backBtnX, backBtnY, backBtnW, backBtnH))) {
+            if (bTrg || isBackBtnClicked) {
+                ProceduralAudio::GetInstance().PlayErrorSE();
                 m_state = MenuState::SELECT_MODE;
                 m_frameCount = 0;
             }
             else if (spaceTrg) {
+                ProceduralAudio::GetInstance().PlayPowerSE(9);
                 m_state = MenuState::SELECT_P1_TYPE;
                 m_frameCount = 0;
             }
@@ -296,19 +323,26 @@ namespace App {
         else if (m_state == MenuState::SELECT_P1_TYPE) {
             for (int i = 0; i < 2; ++i) {
                 if (HoverBox(menuCX - MENU_BOX_HALF_W, menuStartY + MENU_ITEM_BASE_Y + i * MENU_ITEM_STEP_Y - MENU_BOX_OFFSET_Y, MENU_BOX_HALF_W * 2, MENU_BOX_H)) {
-                    if (mouseMoved) m_players[0].typeCursor = i;
+                    if (mouseMoved && m_players[0].typeCursor != i) {
+                        m_players[0].typeCursor = i;
+                        ProceduralAudio::GetInstance().PlayPowerSE(2);
+                    }
                     if (mClick) { m_players[0].typeCursor = i; spaceTrg = true; }
                 }
             }
-            if (upTrg || downTrg) m_players[0].typeCursor = (m_players[0].typeCursor == 0) ? 1 : 0;
+            if (upTrg || downTrg) {
+                m_players[0].typeCursor = (m_players[0].typeCursor == 0) ? 1 : 0;
+                ProceduralAudio::GetInstance().PlayPowerSE(2);
+            }
 
-            if (bTrg || (mClick && HoverBox(backBtnX, backBtnY, backBtnW, backBtnH))) {
-                // モードによって戻り先を分岐
+            if (bTrg || isBackBtnClicked) {
+                ProceduralAudio::GetInstance().PlayErrorSE();
                 if (m_modeCursor == 0) m_state = MenuState::SELECT_CLASSIC_STOCKS;
                 else m_state = MenuState::SELECT_SCORE;
                 m_frameCount = 0;
             }
             else if (spaceTrg) {
+                ProceduralAudio::GetInstance().PlayPowerSE(9);
                 m_state = MenuState::SELECT_P2_TYPE;
                 m_frameCount = 0;
             }
@@ -317,17 +351,25 @@ namespace App {
         else if (m_state == MenuState::SELECT_P2_TYPE) {
             for (int i = 0; i < 2; ++i) {
                 if (HoverBox(menuCX - MENU_BOX_HALF_W, menuStartY + MENU_ITEM_BASE_Y + i * MENU_ITEM_STEP_Y - MENU_BOX_OFFSET_Y, MENU_BOX_HALF_W * 2, MENU_BOX_H)) {
-                    if (mouseMoved) m_players[1].typeCursor = i;
+                    if (mouseMoved && m_players[1].typeCursor != i) {
+                        m_players[1].typeCursor = i;
+                        ProceduralAudio::GetInstance().PlayPowerSE(2);
+                    }
                     if (mClick) { m_players[1].typeCursor = i; spaceTrg = true; }
                 }
             }
-            if (upTrg || downTrg) m_players[1].typeCursor = (m_players[1].typeCursor == 0) ? 1 : 0;
+            if (upTrg || downTrg) {
+                m_players[1].typeCursor = (m_players[1].typeCursor == 0) ? 1 : 0;
+                ProceduralAudio::GetInstance().PlayPowerSE(2);
+            }
 
-            if (bTrg || (mClick && HoverBox(backBtnX, backBtnY, backBtnW, backBtnH))) {
+            if (bTrg || isBackBtnClicked) {
+                ProceduralAudio::GetInstance().PlayErrorSE();
                 m_state = MenuState::SELECT_P1_TYPE;
                 m_frameCount = 0;
             }
             else if (spaceTrg) {
+                ProceduralAudio::GetInstance().PlayPowerSE(9);
                 m_state = MenuState::SELECT_STAGE;
                 m_frameCount = 0;
             }
@@ -336,18 +378,23 @@ namespace App {
         else if (m_state == MenuState::SELECT_STAGE) {
             for (int i = 0; i < 3; ++i) {
                 if (HoverBox(menuCX - MENU_BOX_HALF_W, menuStartY + MENU_ITEM_BASE_Y + i * MENU_ITEM_STEP_Y - MENU_BOX_OFFSET_Y, MENU_BOX_HALF_W * 2, MENU_BOX_H)) {
-                    if (mouseMoved) m_stageCursor = i;
+                    if (mouseMoved && m_stageCursor != i) {
+                        m_stageCursor = i;
+                        ProceduralAudio::GetInstance().PlayPowerSE(2);
+                    }
                     if (mClick) { m_stageCursor = i; spaceTrg = true; }
                 }
             }
-            if (upTrg) { m_stageCursor--; if (m_stageCursor < 0) m_stageCursor = 2; }
-            if (downTrg) { m_stageCursor++; if (m_stageCursor > 2) m_stageCursor = 0; }
+            if (upTrg) { m_stageCursor--; if (m_stageCursor < 0) m_stageCursor = 2; ProceduralAudio::GetInstance().PlayPowerSE(2); }
+            if (downTrg) { m_stageCursor++; if (m_stageCursor > 2) m_stageCursor = 0; ProceduralAudio::GetInstance().PlayPowerSE(2); }
 
-            if (bTrg || (mClick && HoverBox(backBtnX, backBtnY, backBtnW, backBtnH))) {
+            if (bTrg || isBackBtnClicked) {
+                ProceduralAudio::GetInstance().PlayErrorSE();
                 m_state = MenuState::SELECT_P2_TYPE;
                 m_frameCount = 0;
             }
             else if (spaceTrg) {
+                ProceduralAudio::GetInstance().PlayPowerSE(9);
                 m_state = MenuState::CUSTOM_P1_START;
                 m_frameCount = 0;
             }
@@ -365,7 +412,10 @@ namespace App {
 
                 // 項目全体のホバー・クリック
                 if (HoverBox(menuCX - MENU_BOX_HALF_W, iy - MENU_BOX_OFFSET_Y, MENU_BOX_HALF_W * 2, MENU_BOX_H)) {
-                    if (mouseMoved) p.customCursor = i;
+                    if (mouseMoved && p.customCursor != i) {
+                        p.customCursor = i;
+                        ProceduralAudio::GetInstance().PlayPowerSE(2);
+                    }
                     if (mClick) {
                         p.customCursor = i;
                         if (i == 3) spaceTrg = true;  // 最後の項目は決定ボタン
@@ -387,6 +437,7 @@ namespace App {
 
             // 数値直接入力（1~9キー）
             if (hitNum != -1 && p.customCursor < 3) {
+                ProceduralAudio::GetInstance().PlayPowerSE(hitNum); // ★ 入力した数字の音程がそのまま鳴る！
                 if (p.customCursor == 0) p.startNum = hitNum;
                 else if (p.customCursor == 1) p.startX = hitNum;
                 else if (p.customCursor == 2) p.startY = hitNum;
@@ -394,17 +445,19 @@ namespace App {
             }
 
             // カーソル移動（上下キー）
-            if (upTrg) { p.customCursor--; if (p.customCursor < 0) p.customCursor = 0; }
-            if (downTrg) { p.customCursor++; if (p.customCursor > 3) p.customCursor = 3; }
+            if (upTrg) { p.customCursor--; if (p.customCursor < 0) p.customCursor = 0; ProceduralAudio::GetInstance().PlayPowerSE(2); }
+            if (downTrg) { p.customCursor++; if (p.customCursor > 3) p.customCursor = 3; ProceduralAudio::GetInstance().PlayPowerSE(2); }
 
             // 数値の増減（左右キー）
             if (p.customCursor < 3) {
                 if (rightTrg) {
+                    ProceduralAudio::GetInstance().PlayPowerSE(5); // ★ 値変更音
                     if (p.customCursor == 0) { p.startNum++; if (p.startNum > GRID_SIZE) p.startNum = 1; }
                     if (p.customCursor == 1) { p.startX++; if (p.startX > GRID_SIZE) p.startX = 1; }
                     if (p.customCursor == 2) { p.startY++; if (p.startY > GRID_SIZE) p.startY = 1; }
                 }
                 if (leftTrg) {
+                    ProceduralAudio::GetInstance().PlayPowerSE(5); // ★ 値変更音
                     if (p.customCursor == 0) { p.startNum--; if (p.startNum < 1) p.startNum = GRID_SIZE; }
                     if (p.customCursor == 1) { p.startX--; if (p.startX < 1) p.startX = GRID_SIZE; }
                     if (p.customCursor == 2) { p.startY--; if (p.startY < 1) p.startY = GRID_SIZE; }
@@ -412,7 +465,8 @@ namespace App {
             }
 
             // 戻る処理
-            if (bTrg || (mClick && HoverBox(backBtnX, backBtnY, backBtnW, backBtnH))) {
+            if (bTrg || isBackBtnClicked) {
+                ProceduralAudio::GetInstance().PlayErrorSE(); // ★ キャンセル音
                 if (p.customCursor > 0) p.customCursor--;  // カーソルを1つ戻す
                 else if (is1P) {
                     m_state = MenuState::SELECT_STAGE;
@@ -427,6 +481,7 @@ namespace App {
 
             // 決定処理
             if (spaceTrg) {
+                ProceduralAudio::GetInstance().PlayPowerSE(9); // ★ 決定音
                 if (p.customCursor < 3) {
                     p.customCursor++;  // 次の項目へ
                 }

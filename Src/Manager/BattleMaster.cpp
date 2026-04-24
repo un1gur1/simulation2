@@ -2,10 +2,12 @@
 #include "BattleMaster.h"
 #include <DxLib.h>
 #include <cmath>
+#include <random>
 #include <algorithm>
 #include "../Input/InputManager.h"
 #include "../Scene/SceneManager.h" 
 #include "../../CyberGrid.h" 
+#include "ProceduralAudio.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -38,6 +40,8 @@ namespace {
     inline unsigned int COL_WARN() { return GetColor(255, 255, 0); }
     inline unsigned int COL_INFO() { return GetColor(200, 100, 255); }
     inline unsigned int COL_DISABLE() { return GetColor(150, 150, 150); }
+
+    std::mt19937 g_rng(std::random_device{}());
 }
 
 namespace App {
@@ -120,7 +124,7 @@ namespace App {
         g_aiStayCount1P = 0;
         g_aiStayCount2P = 0;
 
-        int stageIdx = sm->GetStageIndex();      
+        int stageIdx = sm->GetStageIndex();
         m_mapGrid.SetRuleModeAndStage(mapMode, stageIdx);
         m_actionLog.clear();
         std::string rModeStr = (m_ruleMode == RuleMode::CLASSIC) ? "クラシック" : "ゼロワン";
@@ -172,25 +176,31 @@ namespace App {
         IntVector2 pos = activeUnit.GetGridPos();
 
         if (!m_isPlayerSelected) {
-            if (m_hoverGrid == pos) m_isPlayerSelected = true;
+            if (m_hoverGrid == pos) {
+                m_isPlayerSelected = true;
+                ProceduralAudio::GetInstance().PlayPowerSE(3); // ★ ユニット選択音
+            }
             return;
         }
 
         if (m_hoverGrid == pos) {
-            activeUnit.AddNumber(-1); // 現在地クリックでコスト1消費
+            activeUnit.AddNumber(-1);
             m_isPlayerSelected = false;
             m_currentPhase = nextPhase;
+            ProceduralAudio::GetInstance().PlayPowerSE(1); // ★ その場待機音
             return;
         }
 
         if (!m_mapGrid.IsWithinBounds(m_hoverGrid.x, m_hoverGrid.y)) {
             m_isPlayerSelected = false;
+            ProceduralAudio::GetInstance().PlayErrorSE(); // ★ エラー音
             return;
         }
 
         int cost = 0;
         if (!CanMove(activeUnit.GetNumber(), activeUnit.GetOp(), pos, m_hoverGrid, cost)) {
             m_isPlayerSelected = false;
+            ProceduralAudio::GetInstance().PlayErrorSE(); // ★ エラー音
             return;
         }
 
@@ -203,6 +213,7 @@ namespace App {
         if (activeUnit.HasWarpNode(m_hoverGrid) || (dx != dy && dx != 0 && dy != 0)) {
             autoPath.push(m_mapGrid.GetCellCenter(m_hoverGrid.x, m_hoverGrid.y));
             AddLog("【跳躍】 転送完了。");
+            ProceduralAudio::GetInstance().PlayPowerSE(8); // ★ ワープ移動の高音
         }
         else {
             int stepX = (m_hoverGrid.x > pos.x) ? 1 : (m_hoverGrid.x < pos.x) ? -1 : 0;
@@ -214,6 +225,7 @@ namespace App {
                 curr.y += stepY;
                 autoPath.push(m_mapGrid.GetCellCenter(curr.x, curr.y));
             }
+            ProceduralAudio::GetInstance().PlayPowerSE(5); // ★ 通常移動音
         }
 
         activeUnit.StartMove(m_hoverGrid, autoPath);
@@ -230,6 +242,12 @@ namespace App {
             actor.SetOp(pickedItem);
             std::string name = (&actor == m_player.get()) ? "1P" : "2P";
             AddLog("【取得】 " + name + "が [" + std::string(1, pickedItem) + "] を取得！");
+
+            // ★ 演算子ごとに異なる音を鳴らす！
+            if (pickedItem == '+') ProceduralAudio::GetInstance().PlayPowerSE(5); // ソ（明るい）
+            else if (pickedItem == '-') ProceduralAudio::GetInstance().PlayPowerSE(2); // レ（少し低い）
+            else if (pickedItem == '*') ProceduralAudio::GetInstance().PlayPowerSE(7); // シ（鋭い）
+            else if (pickedItem == '/') ProceduralAudio::GetInstance().PlayPowerSE(9); // 高いレ（レア感！）
         }
 
         IntVector2 targetPos = targetUnit.GetGridPos();
@@ -267,7 +285,6 @@ namespace App {
             if (!is1P) m_mapGrid.UpdateTurn();
         }
     }
-
     void BattleMaster::ExecuteAIAction(UnitBase* me, UnitBase* opp, bool is1P) {
         if (!me || !opp || me->IsMoving()) return;
 
@@ -278,6 +295,12 @@ namespace App {
         if (pickedItem != '\0') {
             me->SetOp(pickedItem);
             AddLog("【取得】 " + myName + " が [" + std::string(1, pickedItem) + "] を取得");
+
+            // ★ AIの取得時も演算子で音を変える！
+            if (pickedItem == '+') ProceduralAudio::GetInstance().PlayPowerSE(5);
+            else if (pickedItem == '-') ProceduralAudio::GetInstance().PlayPowerSE(2);
+            else if (pickedItem == '*') ProceduralAudio::GetInstance().PlayPowerSE(7);
+            else if (pickedItem == '/') ProceduralAudio::GetInstance().PlayPowerSE(9);
         }
 
         IntVector2 oppP = opp->GetGridPos();
@@ -308,7 +331,6 @@ namespace App {
                     Fraction myScoreNow = is1P ? m_p1ZeroOneScore : m_p2ZeroOneScore;
                     Fraction enScoreNow = is1P ? m_p2ZeroOneScore : m_p1ZeroOneScore;
 
-                    // ★ バウンスも含めた完全な未来予測
                     Fraction nextMy = myScoreNow + resFrac;
                     if (nextMy > goal) nextMy = goal - (nextMy - goal);
 
@@ -329,7 +351,7 @@ namespace App {
                     targetMeIsBetter = (scoreMe >= scoreEn);
                 }
             }
-            else { // CLASSIC
+            else {
                 if (myOp == '/') {
                     targetMeIsBetter = true;
                 }
@@ -354,18 +376,19 @@ namespace App {
                 }
             }
 
+            ProceduralAudio::GetInstance().PlayPowerSE(6); // ★ AI バトル実行音
             if (targetMeIsBetter) ExecuteBattle(*me, *opp, *me);
             else ExecuteBattle(*me, *opp, *opp);
         }
         else {
             AddLog("【待機】 " + myName + " は行動を完了しました");
+            ProceduralAudio::GetInstance().PlayPowerSE(2); // ★ AI 待機音
         }
 
         if (!is1P) m_mapGrid.UpdateTurn();
         m_currentPhase = is1P ? Phase::P2_Move : Phase::P1_Move;
         if (is1P) m_playerAIStarted = false; else m_enemyAIStarted = false;
     }
-
     void BattleMaster::Update() {
         if (m_currentPhase == Phase::FINISH) {
             m_finishTimer++;
@@ -386,6 +409,15 @@ namespace App {
             if (m_player && m_player->GetStocks() < m_player->GetMaxStocks()) m_player->AddStocks(m_player->GetMaxStocks() - m_player->GetStocks());
             if (m_enemy && m_enemy->GetStocks() < m_enemy->GetMaxStocks()) m_enemy->AddStocks(m_enemy->GetMaxStocks() - m_enemy->GetStocks());
         }
+
+        auto updateCursor = [](float& currentX, int targetNum) {
+            float targetX = 40.0f + (targetNum - 1) * 48.0f;
+            if (currentX == 0.0f) currentX = targetX;
+            currentX += (targetX - currentX) * 0.2f;
+            };
+
+        if (m_player) updateCursor(m_uiCursorX_1P, m_player->GetNumber());
+        if (m_enemy)  updateCursor(m_uiCursorX_2P, m_enemy->GetNumber());
 
         auto& input = InputManager::GetInstance();
         if (m_player) m_player->Update();
@@ -424,6 +456,8 @@ namespace App {
             m_currentPhase = Phase::FINISH;
             m_finishTimer = 0;
             m_effectIntensity = 1.0f;
+            ProceduralAudio::GetInstance().PlayPowerSE(9); // ★ ゲーム終了音（最高音）
+            ProceduralAudio::GetInstance().PlayErrorSE(); // ★ 重厚な終了感
         }
     }
 
@@ -441,13 +475,21 @@ namespace App {
             if (is1P) g_aiStayCount1P = 0; else g_aiStayCount2P = 0;
         }
 
-        // その場待機ならコストは1。それ以外は移動コスト。
         int actualCost = isStay ? 1 : selectedCost;
         if (me->HasWarpNode(bestTarget)) actualCost = 1;
 
-        if (me->HasWarpNode(bestTarget)) AddLog("【転送】 " + myName + " がワープを起動 (-1)");
-        else if (isStay) AddLog("【待機】 " + myName + " はその場でリソースを消費 (-1)");
-        else AddLog("【進軍】 " + myName + " が移動を開始 (-" + std::to_string(actualCost) + ")");
+        if (me->HasWarpNode(bestTarget)) {
+            AddLog("【転送】 " + myName + " がワープを起動 (-1)");
+            ProceduralAudio::GetInstance().PlayPowerSE(8); // ★ AI ワープ音
+        }
+        else if (isStay) {
+            AddLog("【待機】 " + myName + " はその場でリソースを消費 (-1)");
+            ProceduralAudio::GetInstance().PlayPowerSE(1); // ★ AI 待機音
+        }
+        else {
+            AddLog("【進軍】 " + myName + " が移動を開始 (-" + std::to_string(actualCost) + ")");
+            ProceduralAudio::GetInstance().PlayPowerSE(5); // ★ AI 移動音
+        }
 
         int dx = std::abs(bestTarget.x - myPos.x);
         int dy = std::abs(bestTarget.y - myPos.y);
@@ -467,14 +509,12 @@ namespace App {
                 screenPath.push(m_mapGrid.GetCellCenter(curr.x, curr.y));
             }
         }
-        // 確実に数値を減らす
         me->AddNumber(-actualCost);
         me->StartMove(bestTarget, screenPath);
 
         if (is1P) m_playerAIStarted = true; else m_enemyAIStarted = true;
     }
 
-    
     int BattleMaster::EvaluateBoard(const UnitBase& me, int myVirtualNumber, const UnitBase& enemy, IntVector2 targetPos, bool is1P) const {
         int score = 0;
         IntVector2 currentPos = me.GetGridPos();
@@ -591,12 +631,10 @@ namespace App {
             if (canAttack && virtualOp == '\0' && enemy.GetOp() != '\0') score -= 5000;
         }
         else {
-            // クラシックモード
             score += predictedStocks * 20000;
             score -= enemy.GetStocks() * 20000;
             score += predictedHp * 100;
 
-            // ★ 修正：現在アイテムを持っていないなら「アイテム探し」を優先
             if (me.GetOp() == '\0') {
                 int bestItemScore = -99999;
                 for (int ix = 0; ix < 9; ++ix) {
@@ -661,6 +699,7 @@ namespace App {
 
         return score;
     }
+
     void BattleMaster::ExecuteAI(UnitBase* me, UnitBase* opp, bool is1P) {
         if (!me) return;
 
@@ -672,6 +711,9 @@ namespace App {
         int bestScore = -9999999;
         int selectedCost = 1;
 
+        // ★ 乱数分布（-500〜+500 の範囲でノイズを追加）
+        std::uniform_int_distribution<int> noiseDist(-500, 500);
+
         for (int x = 0; x < 9; ++x) {
             for (int y = 0; y < 9; ++y) {
                 IntVector2 target{ x, y };
@@ -682,7 +724,7 @@ namespace App {
                     canGo = CanMove(currentNum, currentOp, myPos, target, cost);
                 }
                 else {
-                    cost = 1; // 待機はコスト1
+                    cost = 1;
                 }
 
                 if (canGo) {
@@ -691,6 +733,10 @@ namespace App {
 
                     me->StartMove(target, std::queue<Vector2>());
                     int eval = EvaluateBoard(*me, virtualNextNum, *opp, target, is1P);
+
+                    // ★ 評価値にランダムなノイズを加える（デッドロック防止）
+                    int noise = noiseDist(g_rng);
+                    eval += noise;
 
                     if (eval > bestScore) {
                         bestScore = eval;
@@ -720,6 +766,7 @@ namespace App {
                 target.AddWarpNode(nodePos);
                 std::string targetName = (&target == m_player.get()) ? "1P" : "2P";
                 AddLog("【ワープ】 " + targetName + " が座標 (" + std::to_string(aNum) + ", " + std::to_string(dNum) + ") にワープ設置！");
+                ProceduralAudio::GetInstance().PlayPowerSE(9); // ★ ワープ設置音（最高音）
             }
         }
 
@@ -743,7 +790,10 @@ namespace App {
         }
 
         std::string aName = (&attacker == m_player.get()) ? "1P" : "2P";
-        if (aOp != '/') AddLog(">> " + aName + " の計算！ [ 値: " + std::to_string(intRes) + " ]");
+        if (aOp != '/') {
+            AddLog(">> " + aName + " の計算！ [ 値: " + std::to_string(intRes) + " ]");
+            ProceduralAudio::GetInstance().PlayPowerSE(4); // ★ 計算実行音
+        }
 
         m_totalOps++;
         if (std::abs(intRes) > m_maxDamage) m_maxDamage = std::abs(intRes);
@@ -781,7 +831,11 @@ namespace App {
 
             int cycleValue = (intRes - 1) % 9;
             if (cycleValue < 0) cycleValue += 9;
-            unit.SetNumber(cycleValue + 1);
+            int finalNum = cycleValue + 1;
+            unit.SetNumber(finalNum);
+
+            // ★ ゼロワンモードでも、着地した数字の音を鳴らす！
+            ProceduralAudio::GetInstance().PlayPowerSE(finalNum);
         }
         else {
             if (op != '/') {
@@ -795,20 +849,29 @@ namespace App {
                 if (stockChange < 0) {
                     unit.AddStocks(stockChange);
                     AddLog("【ダメージ】 " + name + " の残機 " + std::to_string(stockChange) + "！");
+                    // ★ バッテリーが減った時（ダメージ）はノイズ音！
+                    ProceduralAudio::GetInstance().PlayErrorSE();
                 }
                 else if (stockChange > 0) {
                     unit.AddStocks(stockChange);
                     AddLog("【回復】 " + name + " の残機 +" + std::to_string(stockChange) + "！");
+                    // ★ バッテリーが増えた時（回復）は高音のキラキラ！
+                    ProceduralAudio::GetInstance().PlayPowerSE(8);
                 }
                 else {
                     AddLog("【反映】 " + name + " の数値にダメージ/回復を適用");
                 }
                 unit.SetNumber(newHpRaw);
                 AddLog("【結果】 " + name + " の体力は [" + std::to_string(newHpRaw) + "] になった。");
+
+                // ★ 結果として着地した数字（1〜9）の音を鳴らす！
+                int soundNum = newHpRaw;
+                while (soundNum <= 0) { soundNum += 9; }
+                while (soundNum > 9) { soundNum -= 9; }
+                ProceduralAudio::GetInstance().PlayPowerSE(soundNum);
             }
         }
     }
-
     void BattleMaster::DrawEnemyDangerArea() const {
         UnitBase* opp = GetTargetUnit();
         if (!opp || opp->GetStocks() <= 0 || opp->IsMoving()) return;
@@ -1094,7 +1157,7 @@ namespace App {
             DrawString((int)center.x - tw / 2, (int)center.y + 15, lbl, COL_TEXT_MAIN());
         }
 
-        auto drawUnitCard = [&](int x, int y, UnitBase* unit, bool is1P, int p_previewNum = -1) {
+        auto drawUnitCard = [&](int x, int y, UnitBase* unit, bool is1P, int p_previewNum = -1, int p_previewStocks = -1) {
             if (!unit) return;
             unsigned int baseCol = is1P ? COL_P1() : COL_P2();
             std::string headerName = is1P ? (m_is1P_NPC ? "1P (COM)" : "1P PLAYER") : (m_is2P_NPC ? "2P (COM)" : "2P PLAYER");
@@ -1114,7 +1177,6 @@ namespace App {
 
             if (m_ruleMode == RuleMode::ZERO_ONE) {
                 Fraction f = is1P ? m_p1ZeroOneScore : m_p2ZeroOneScore;
-
                 if (f.d == 1) {
                     SetFontSize(140);
                     std::string nStr = std::to_string(f.n);
@@ -1133,7 +1195,7 @@ namespace App {
 
                     DrawFormatString(cx - nw / 2 + 4, scoreY - 16, COL_TEXT_DARK(), "%s", nStr.c_str());
                     DrawFormatString(cx - nw / 2, scoreY - 20, fracCol, "%s", nStr.c_str());
-                    DrawLine(cx - maxW / 2 - 10, scoreY + 85, cx + maxW / 2 + 10, scoreY + 85, fracCol, 6);
+                    DrawLine(cx - maxW / 2 - 10, scoreY + 85, cx + maxW / 2 + 85, scoreY + 85, fracCol, 6);
                     DrawFormatString(cx - dw / 2 + 4, scoreY + 94, COL_TEXT_DARK(), "%s", dStr.c_str());
                     DrawFormatString(cx - dw / 2, scoreY + 90, fracCol, "%s", dStr.c_str());
                 }
@@ -1143,29 +1205,145 @@ namespace App {
                 DrawFormatString(x + 15, scoreY + 206, COL_TEXT_MAIN(), "目標値 : %d", m_targetScore);
             }
             else {
-                if (p_previewNum != -1 && p_previewNum != unit->GetNumber()) {
-                    SetFontSize(80);
-                    DrawFormatString(x + 20, scoreY + 50, COL_DISABLE(), "%d", unit->GetNumber());
-                    DrawString(x + 70, scoreY + 45, "→", COL_TEXT_SUB());
-                    SetFontSize(160);
-                    DrawFormatString(x + 130, scoreY + 10, COL_SAFE(), "%d", p_previewNum);
+                int currentNum = unit->GetNumber();
+                int preview = (p_previewNum != -1) ? p_previewNum : currentNum;
+
+                float cursorX = is1P ? m_uiCursorX_1P : m_uiCursorX_2P;
+                if (cursorX == 0.0f) cursorX = 40.0f + (currentNum - 1) * 48.0f;
+
+                DrawBox(x + 10, scoreY + 65, x + 490, scoreY + 115, GetColor(10, 10, 15), TRUE);
+                DrawLine(x + 10, scoreY + 90, x + 490, scoreY + 90, GetColor(30, 30, 40), 1);
+
+                bool isDeadPreview = (p_previewStocks < 0);
+                unsigned int frameCol = isDeadPreview ? COL_DANGER() : baseCol;
+
+                int hx = x + (int)cursorX;
+                int hy = scoreY + 54;
+                int fw = 56;
+                int fh = 70;
+
+                SetDrawBlendMode(DX_BLENDMODE_ADD, 120);
+                DrawBox(hx - fw / 2, hy, hx + fw / 2, hy + fh, frameCol, TRUE);
+                SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+
+                int cl = 12; int thick = 3;
+                DrawBox(hx - fw / 2, hy, hx - fw / 2 + cl, hy + thick, frameCol, TRUE);
+                DrawBox(hx - fw / 2, hy, hx - fw / 2 + thick, hy + cl, frameCol, TRUE);
+                DrawBox(hx + fw / 2 - cl, hy, hx + fw / 2, hy + thick, frameCol, TRUE);
+                DrawBox(hx + fw / 2 - thick, hy, hx + fw / 2, hy + cl, frameCol, TRUE);
+                DrawBox(hx - fw / 2, hy + fh - thick, hx - fw / 2 + cl, hy + fh, frameCol, TRUE);
+                DrawBox(hx - fw / 2, hy + fh - cl, hx - fw / 2 + thick, hy + fh, frameCol, TRUE);
+                DrawBox(hx + fw / 2 - cl, hy + fh - thick, hx + fw / 2, hy + fh, frameCol, TRUE);
+                DrawBox(hx + fw / 2 - thick, hy + fh - cl, hx + fw / 2, hy + fh, frameCol, TRUE);
+
+                for (int i = 1; i <= 9; ++i) {
+                    int px = x + 40 + (i - 1) * 48;
+                    int py = scoreY + 68;
+                    std::string numStr = std::to_string(i);
+
+                    float targetX = 40.0f + (i - 1) * 48.0f;
+                    float distance = std::abs(cursorX - targetX);
+
+                    float currentSize = 32.0f;
+                    float currentYOff = 6.0f;
+                    unsigned int numCol = GetColor(70, 70, 80);
+
+                    if (distance < 48.0f && !isDeadPreview) {
+                        float ratio = 1.0f - (distance / 48.0f);
+                        ratio = std::sin(ratio * M_PI / 2.0f);
+                        currentSize = 32.0f + (32.0f * ratio);
+                        currentYOff = 6.0f - (32.0f * ratio);
+                        if (ratio > 0.8f) numCol = COL_TEXT_MAIN();
+                        else numCol = COL_TEXT_SUB();
+                    }
+
+                    if (i == preview && preview != currentNum && !isDeadPreview) {
+                        currentSize = 48.0f;
+                        currentYOff = -16.0f;
+                        numCol = COL_SAFE();
+                        SetFontSize(16);
+                        DrawString(px - 8, py + 34, "▲", COL_SAFE());
+                    }
+
+                    SetFontSize((int)currentSize);
+                    int tw = GetDrawStringWidth(numStr.c_str(), 1);
+                    DrawString(px - tw / 2, py + (int)currentYOff, numStr.c_str(), numCol);
                 }
-                else {
-                    SetFontSize(160);
-                    DrawString(x + 24, scoreY + 14, std::to_string(unit->GetNumber()).c_str(), COL_TEXT_DARK());
-                    DrawFormatString(x + 20, scoreY + 10, COL_TEXT_MAIN(), "%d", unit->GetNumber());
+
+                if (p_previewNum != -1 && (p_previewNum != currentNum || p_previewStocks != unit->GetStocks())) {
+                    SetFontSize(22);
+                    if (isDeadPreview) {
+                        DrawFormatString(x + 130, scoreY + 145, COL_DANGER(), "▼ 警告 : バッテリー枯渇により【 破壊 】されます！");
+                    }
+                    else if (p_previewStocks != -1 && p_previewStocks < unit->GetStocks()) {
+                        DrawFormatString(x + 130, scoreY + 145, COL_WARN(), "▼ バッテリー消費で再充電 : %d → %d", currentNum, preview);
+                    }
+                    else if (p_previewStocks != -1 && p_previewStocks > unit->GetStocks()) {
+                        DrawFormatString(x + 130, scoreY + 145, COL_SAFE(), "▲ 超過でバッテリー充電！ : %d → %d", currentNum, preview);
+                    }
+                    else {
+                        DrawFormatString(x + 130, scoreY + 145, COL_SAFE(), "反映後プレビュー : %d → %d", currentNum, preview);
+                    }
                 }
             }
 
             int infoY = y + 330;
             DrawBox(x, infoY, x + 500, infoY + 120, COL_DARK_BG(), TRUE);
-            SetFontSize(24);
+            SetFontSize(22);
 
             if (m_ruleMode == RuleMode::CLASSIC) {
-                DrawString(x + 20, infoY + 15, "残機", GetColor(180, 180, 180));
+                DrawString(x + 20, infoY + 18, "バッテリー", GetColor(180, 180, 180));
+
+                int currentStocks = unit->GetStocks();
+                int previewStocks = (p_previewStocks != -1) ? p_previewStocks : currentStocks;
+
                 for (int i = 0; i < unit->GetMaxStocks(); ++i) {
-                    unsigned int sCol = (i < unit->GetStocks()) ? baseCol : GetColor(40, 40, 50);
-                    DrawBox(x + 80 + i * 22, infoY + 18, x + 96 + i * 22, infoY + 34, sCol, TRUE);
+                    int sx = x + 130 + i * 55;
+                    int sy = infoY + 8;
+                    int sw = 40;
+                    int sh = 38;
+
+                    if (i < currentStocks && i >= previewStocks) {
+                        int blinkAlpha = (int)(120 + 120 * std::sin(GetNowCount() / 50.0));
+                        SetDrawBlendMode(DX_BLENDMODE_ADD, blinkAlpha);
+                        DrawBox(sx - 4, sy - 4, sx + sw + 4, sy + sh + 4, COL_DANGER(), TRUE);
+                        SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+
+                        DrawBox(sx, sy, sx + sw, sy + sh, GetColor(200, 50, 50), TRUE);
+                        DrawBox(sx + sw, sy + 8, sx + sw + 5, sy + sh - 8, GetColor(200, 50, 50), TRUE);
+
+                        SetFontSize(16);
+                        DrawString(sx + 4, sy - 20, "消費!", COL_DANGER());
+                    }
+                    else if (i >= currentStocks && i < previewStocks) {
+                        int blinkAlpha = (int)(120 + 120 * std::sin(GetNowCount() / 50.0));
+                        SetDrawBlendMode(DX_BLENDMODE_ADD, blinkAlpha);
+                        DrawBox(sx - 4, sy - 4, sx + sw + 4, sy + sh + 4, COL_SAFE(), TRUE);
+                        SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+
+                        DrawBox(sx, sy, sx + sw, sy + sh, GetColor(50, 200, 100), TRUE);
+                        DrawBox(sx + sw, sy + 8, sx + sw + 5, sy + sh - 8, GetColor(50, 200, 100), TRUE);
+
+                        SetFontSize(16);
+                        DrawString(sx + 4, sy - 20, "充電!", COL_SAFE());
+                    }
+                    else if (i < currentStocks) {
+                        DrawBox(sx, sy, sx + sw, sy + sh, baseCol, TRUE);
+                        DrawBox(sx + sw, sy + 8, sx + sw + 5, sy + sh - 8, baseCol, TRUE);
+
+                        SetDrawBlendMode(DX_BLENDMODE_ALPHA, 100);
+                        DrawBox(sx + 3, sy + 3, sx + sw - 3, sy + 12, GetColor(255, 255, 255), TRUE);
+                        SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+                    }
+                    else {
+                        DrawBox(sx, sy, sx + sw, sy + sh, GetColor(25, 25, 30), TRUE);
+                        DrawBox(sx, sy, sx + sw, sy + sh, GetColor(60, 60, 70), FALSE);
+                        DrawBox(sx + sw, sy + 8, sx + sw + 5, sy + sh - 8, GetColor(60, 60, 70), FALSE);
+
+                        SetDrawBlendMode(DX_BLENDMODE_ALPHA, 150);
+                        DrawLine(sx + 6, sy + 6, sx + sw - 6, sy + sh - 6, GetColor(150, 50, 50), 3);
+                        SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+                    }
                 }
             }
 
@@ -1179,7 +1357,7 @@ namespace App {
             }
 
             int ix = x + 350, iy = infoY + 15;
-            SetFontSize(20);
+            SetFontSize(18);
             DrawString(ix - 5, iy, "【移動範囲】", COL_DISABLE());
             int targetNumForGrid = (p_previewNum != -1) ? p_previewNum : unit->GetNumber();
             unsigned int gridBaseCol = (p_previewNum != -1) ? COL_SAFE() : baseCol;
@@ -1188,15 +1366,67 @@ namespace App {
                 int gx = i % 3, gy = i / 3;
                 bool canGo = (i == 4) ? false : (targetNumForGrid <= 3 ? (gx == 1 || gy == 1) : (targetNumForGrid <= 6 ? (gx == gy || gx + gy == 2) : true));
                 unsigned int dotCol = canGo ? gridBaseCol : GetColor(40, 40, 50);
-                DrawBox(ix + gx * 22, iy + 28 + gy * 22, ix + gx * 22 + 18, iy + 28 + gy * 22 + 18, dotCol, TRUE);
+                DrawBox(ix + gx * 22, iy + 26 + gy * 22, ix + gx * 22 + 18, iy + 26 + gy * 22 + 18, dotCol, TRUE);
             }
             };
 
-        int p1Preview = (isMovePreview && activeActor == m_player.get()) ? previewNum : -1;
-        int p2Preview = (isMovePreview && activeActor == m_enemy.get()) ? previewNum : -1;
+        int p1PreviewNum = -1; int p1PreviewStocks = m_player ? m_player->GetStocks() : 0;
+        int p2PreviewNum = -1; int p2PreviewStocks = m_enemy ? m_enemy->GetStocks() : 0;
 
-        drawUnitCard(40, 100, m_player.get(), true, p1Preview);
-        drawUnitCard(1380, 100, m_enemy.get(), false, p2Preview);
+        if (isMovePreview) {
+            if (activeActor == m_player.get()) {
+                int temp = m_player->GetNumber() - previewCost;
+                p1PreviewStocks = m_player->GetStocks();
+                while (temp <= 0) { p1PreviewStocks--; temp += 9; }
+                p1PreviewNum = (p1PreviewStocks < 0) ? 0 : temp;
+            }
+            else if (activeActor == m_enemy.get()) {
+                int temp = m_enemy->GetNumber() - previewCost;
+                p2PreviewStocks = m_enemy->GetStocks();
+                while (temp <= 0) { p2PreviewStocks--; temp += 9; }
+                p2PreviewNum = (p2PreviewStocks < 0) ? 0 : temp;
+            }
+        }
+
+        if (m_ruleMode == RuleMode::CLASSIC && (m_currentPhase == Phase::P1_Action || m_currentPhase == Phase::P2_Action)) {
+            if (canAttack && hasOp && (isHoverSelf || isHoverEnemy)) {
+                int aNum = activeActor->GetNumber();
+                int tNum = activeTarget->GetNumber();
+                char aOp = activeActor->GetOp();
+
+                int intRes = 0;
+                if (aOp == '+') intRes = aNum + tNum;
+                else if (aOp == '-') intRes = aNum - tNum;
+                else if (aOp == '*') intRes = aNum * tNum;
+                else if (aOp == '/') {
+                    if (tNum != 0 && aNum % tNum == 0) intRes = aNum / tNum;
+                }
+
+                int targetCurrentHp = isHoverSelf ? aNum : tNum;
+                int currentStocks = isHoverSelf ? activeActor->GetStocks() : activeTarget->GetStocks();
+
+                int newHpRaw = targetCurrentHp + intRes;
+                int stockChange = 0;
+                int simulatedHp = newHpRaw;
+                while (simulatedHp <= 0) { stockChange--; simulatedHp += 9; }
+                while (simulatedHp > 9) { stockChange++; simulatedHp -= 9; }
+
+                int finalStocks = currentStocks + stockChange;
+                int finalNum = (finalStocks < 0) ? 0 : simulatedHp;
+
+                if (isHoverSelf) {
+                    if (activeActor == m_player.get()) { p1PreviewNum = finalNum; p1PreviewStocks = finalStocks; }
+                    else { p2PreviewNum = finalNum; p2PreviewStocks = finalStocks; }
+                }
+                else {
+                    if (activeTarget == m_player.get()) { p1PreviewNum = finalNum; p1PreviewStocks = finalStocks; }
+                    else { p2PreviewNum = finalNum; p2PreviewStocks = finalStocks; }
+                }
+            }
+        }
+
+        drawUnitCard(40, 100, m_player.get(), true, p1PreviewNum, p1PreviewStocks);
+        drawUnitCard(1380, 100, m_enemy.get(), false, p2PreviewNum, p2PreviewStocks);
 
         SetFontSize(22);
         DrawLine(40, LOG_PANEL_Y, 540, LOG_PANEL_Y, GetColor(60, 60, 70), 1);
@@ -1328,7 +1558,7 @@ namespace App {
                     }
                 }
             }
-            else { // CLASSIC モード
+            else {
                 SetFontSize(64);
                 int calcY = isPreviewMode ? BOTTOM_PANEL_Y + 27 : BOTTOM_PANEL_Y + 17;
                 DrawFormatString(672, calcY, COL_TEXT_DARK(), "%d %c %d =>", disp_aNum, disp_aOp, disp_tNum);
@@ -1405,9 +1635,6 @@ namespace App {
             SetFontSize(28); DrawString(760, BOTTOM_PANEL_Y + 40, "移動するマスを選択してください", COL_DISABLE());
         }
 
-        // ==========================================
-        // 9. 行動選択ボタン (アクションフェーズのみ)
-        // ==========================================
         if (m_currentPhase == Phase::P1_Action || m_currentPhase == Phase::P2_Action) {
             if (m_currentPhase == Phase::P1_Action && m_is1P_NPC) return;
             if (m_currentPhase == Phase::P2_Action && m_is2P_NPC) return;
@@ -1448,9 +1675,6 @@ namespace App {
             }
         }
 
-        // ==========================================
-        // 10. GAME SET オーバーレイ
-        // ==========================================
         if (m_currentPhase == Phase::FINISH) {
             SetDrawBlendMode(DX_BLENDMODE_ALPHA, 150);
             DrawBox(0, 0, SCREEN_W, SCREEN_H, COL_TEXT_DARK(), TRUE);
@@ -1470,28 +1694,20 @@ namespace App {
         }
     }
 
-    // ==========================================
-    // ★ ゲーム終了判定
-    // ==========================================
     bool BattleMaster::IsGameOver() const {
         if (!m_player || !m_enemy) return false;
 
-        // ゼロワンモード：どちらかが目標スコアに到達
         if (m_ruleMode == RuleMode::ZERO_ONE) {
             Fraction goal(m_targetScore);
             return (m_p1ZeroOneScore == goal || m_p2ZeroOneScore == goal);
         }
 
-        // クラシックモード：残機0 かつ 体力0以下 で敗北
         if (m_player->GetStocks() <= 0 && m_player->GetNumber() <= 0) return true;
         if (m_enemy->GetStocks() <= 0 && m_enemy->GetNumber() <= 0) return true;
 
         return false;
     }
 
-    // ==========================================
-    // ★ プレイヤー勝利判定
-    // ==========================================
     bool BattleMaster::IsPlayerWin() const {
         if (!m_player || !m_enemy) return false;
 
@@ -1500,14 +1716,10 @@ namespace App {
             return (m_p1ZeroOneScore == goal);
         }
         else {
-            // クラシックモード：敵の残機と体力が尽きたら勝利
             return (m_enemy->GetStocks() <= 0 && m_enemy->GetNumber() <= 0);
         }
     }
 
-    // ==========================================
-    // ★ ボタンのクリック判定（矩形 vs 点）
-    // ==========================================
     bool BattleMaster::CheckButtonClick(int x, int y, int w, int h, const Vector2& mousePos) const {
         return (mousePos.x >= static_cast<float>(x) &&
             mousePos.x <= static_cast<float>(x + w) &&

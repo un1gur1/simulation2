@@ -44,9 +44,9 @@ public:
 	void SetSeVolume(int volume);		// 0`255
 	void SetMasterVolume(int volume);	// 0`255
 
-	int GetBgmVolume(int volume) const { return bgmVolume_; }
-	int GetSeVolume(int volume) const { return seVolume_; }
-	int GetMasterVolume(int volume) const { return masterVolume_; }
+	int GetBgmVolume() const { return bgmVolume_; }
+	int GetSeVolume() const { return seVolume_; }
+	int GetMasterVolume() const { return masterVolume_; }
 
 private:
 	std::unordered_map<SoundID, int> handles_;	// ƒnƒ“ƒhƒ‹ŠÇ——p

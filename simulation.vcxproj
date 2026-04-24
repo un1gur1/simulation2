@@ -190,6 +190,7 @@
     <ClCompile Include="Src\Main.cpp" />
     <ClCompile Include="Src\Manager\AudioManager.cpp" />
     <ClCompile Include="Src\Manager\BattleMaster.cpp" />
+    <ClCompile Include="Src\Manager\ProceduralAudio.cpp" />
     <ClCompile Include="Src\Manager\SoundTable.cpp" />
     <ClCompile Include="Src\Object\Map\MapGrid.cpp" />
     <ClCompile Include="Src\Object\Unit\Enemy\Enemy.cpp" />
@@ -208,6 +209,7 @@
     <ClInclude Include="Src\Input\InputManager.h" />
     <ClInclude Include="Src\Manager\AudioManager.h" />
     <ClInclude Include="Src\Manager\BattleMaster.h" />
+    <ClInclude Include="Src\Manager\ProceduralAudio.h" />
     <ClInclude Include="Src\Manager\SoundTable.h" />
     <ClInclude Include="Src\Object\Map\MapGrid.h" />
     <ClInclude Include="Src\Object\Unit\Enemy\Enemy.h" />
