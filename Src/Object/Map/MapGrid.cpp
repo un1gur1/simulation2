@@ -26,10 +26,10 @@ namespace App {
         m_spawnPoints.clear();
 
         if (m_ruleMode == BattleRuleMode::CLASSIC) {
-            InitializeClassicSpawns();   // クラシックモード用配置
+            InitializeClassicSpawns();   // ノーマルモード用配置
         }
         else {
-            InitializeZeroOneSpawns();   // ゼロワンモード用配置
+            InitializeZeroOneSpawns();   // カウントモード用配置
         }
     }
 
@@ -43,10 +43,10 @@ namespace App {
 
         // アイテム再出現間隔の設定（モード別）
         if (m_ruleMode == BattleRuleMode::CLASSIC) {
-            m_spawnInterval = 3;  // クラシック: 3ターンごと
+            m_spawnInterval = 3;  // ノーマルモード: 3ターンごと
         }
         else {
-            m_spawnInterval = 2;  // ゼロワン: 2ターンごと（テンポ重視）
+            m_spawnInterval = 2;  // カウントモード: 2ターンごと（テンポ重視）
         }
 
         // ステージレイアウト初期化
@@ -54,7 +54,7 @@ namespace App {
     }
 
     // ==========================================
-    // クラシックモードのアイテム配置
+    // ノーマルモードのアイテム配置
     // 特徴: ステージ3のみアイテムが時間で循環する
     // ==========================================
     void MapGrid::InitializeClassicSpawns() {
@@ -93,25 +93,30 @@ namespace App {
         }
         else {
             // ==========================================
-            // 【STAGE 3】円形配置: 時間で循環する特殊ステージ
-            // アイテムが (+→-→*→/) の順で自動変化
-            // 取るタイミングが勝敗を分ける
+            // 【STAGE 3 - CHAOS】全方位ランダム循環: 完全予測不可能
+            // 全25箇所にアイテム配置！各地点が異なる記号でスタート
+            // 2ターンごとに全体が高速循環し、戦況が目まぐるしく変化
+            // 臨機応変な判断力が勝敗を分ける超高難度ステージ
             // ==========================================
             defs = {
-                // 外周8方向（プラススタート）
-                { 4, 0, '+' }, { 7, 1, '+' }, { 8, 4, '+' }, { 7, 7, '+' },
-                { 4, 8, '+' }, { 1, 7, '+' }, { 0, 4, '+' }, { 1, 1, '+' },
+                // 最外周（8方位）- 割り算を中心に配置（ワープ乱立）
+                { 4, 0, '/' }, { 7, 1, '*' }, { 8, 4, '/' }, { 7, 7, '+' },
+                { 4, 8, '/' }, { 1, 7, '-' }, { 0, 4, '/' }, { 1, 1, '*' },
 
-                // 中間層8方向（マイナススタート）
-                { 4, 2, '-' }, { 6, 2, '-' }, { 6, 4, '-' }, { 6, 6, '-' },
-                { 4, 6, '-' }, { 2, 6, '-' }, { 2, 4, '-' }, { 2, 2, '-' },
+                // 外側中間層（8方位）- マイナスと掛け算を混合
+                { 4, 1, '-' }, { 6, 1, '*' }, { 7, 4, '-' }, { 6, 7, '*' },
+                { 4, 7, '-' }, { 2, 7, '*' }, { 1, 4, '-' }, { 2, 1, '*' },
 
-                // 中央（掛け算スタート）
+                // 内側中間層（8方位）- 全演算子をバラバラに配置
+                { 4, 2, '+' }, { 6, 2, '/' }, { 6, 4, '*' }, { 6, 6, '-' },
+                { 4, 6, '+' }, { 2, 6, '/' }, { 2, 4, '*' }, { 2, 2, '-' },
+
+                // 中央（超重要エリア）- 常に激戦区
                 { 4, 4, '*' }
             };
         }
 
-        // ステージ3専用: 循環シーケンス
+        // ステージ3専用: 4段階循環シーケンス（高速変化）
         std::vector<char> cycleSeq = { '+', '-', '*', '/' };
 
         for (const auto& d : defs) {
@@ -119,10 +124,10 @@ namespace App {
             sp.pos = { d.x, d.y };
 
             if (m_stageIndex == 2) {
-                // ステージ3: 循環モード
+                // ステージ3（CHAOS）: 全地点が循環モード
                 sp.sequence = cycleSeq;
 
-                // 初期記号から開始位置を決定
+                // 初期記号から開始位置を決定（各地点でバラバラに開始）
                 auto it = std::find(cycleSeq.begin(), cycleSeq.end(), d.op);
                 if (it != cycleSeq.end()) {
                     sp.currentIndex = (int)std::distance(cycleSeq.begin(), it);
@@ -144,7 +149,7 @@ namespace App {
     }
 
     // ==========================================
-    // ゼロワンモードのアイテム配置
+    // カウントモードのアイテム配置
     // 特徴: 全ステージで (+→-→*→/→+→-) の6段階循環
     // ==========================================
     void MapGrid::InitializeZeroOneSpawns() {
@@ -186,14 +191,29 @@ namespace App {
         }
         else {
             // ==========================================
-            // 【STAGE 3】四隅散開: 遠距離移動が必須
-            // 移動コスト管理が重要になる高難度ステージ
+            // 【STAGE 3 - CHAOS】完全ランダム配置: 全29箇所フル展開
+            // 6段階循環が全盤面で異なる位相でスタート
+            // スコア計算が極めて複雑になる数学的カオス
+            // 分数計算の深い理解が求められる最高難度
             // ==========================================
             defs = {
-                { 1, 1, 0 }, { 7, 1, 1 }, { 1, 7, 1 }, { 7, 7, 0 },
-                { 4, 1, 2 }, { 4, 7, 3 }, { 1, 4, 4 }, { 7, 4, 5 },
-                { 2, 2, 0 }, { 6, 2, 1 }, { 2, 6, 1 }, { 6, 6, 0 },
-                { 4, 4, 3 }  // 中央: 割り算スタート
+                // 最外周（8方位）- 位相を最大限バラバラに
+                { 4, 0, 0 }, { 7, 1, 2 }, { 8, 4, 4 }, { 7, 7, 1 },
+                { 4, 8, 3 }, { 1, 7, 5 }, { 0, 4, 0 }, { 1, 1, 2 },
+
+                // 外側中間層（8方位）- 演算子密度を高める
+                { 4, 1, 1 }, { 6, 1, 3 }, { 7, 4, 5 }, { 6, 7, 0 },
+                { 4, 7, 2 }, { 2, 7, 4 }, { 1, 4, 1 }, { 2, 1, 3 },
+
+                // 内側中間層（8方位）- 戦術的要衝を形成
+                { 4, 2, 2 }, { 6, 2, 4 }, { 6, 4, 0 }, { 6, 6, 3 },
+                { 4, 6, 5 }, { 2, 6, 1 }, { 2, 4, 4 }, { 2, 2, 2 },
+
+                // 内々層（4方位）- 超激戦区
+                { 3, 3, 0 }, { 5, 3, 3 }, { 5, 5, 1 }, { 3, 5, 4 },
+
+                // 中央（絶対的焦点）- 常に争奪戦
+                { 4, 4, 2 }
             };
         }
 
@@ -218,8 +238,8 @@ namespace App {
                 char picked = sp.currentSymbol;
                 sp.isAvailable = false;  // 取得済み状態にする
 
-                // クラシックのステージ3「以外」は取得時に次へ進める
-                // ステージ3は時間経過でのみ進むため、ここでは進めない
+                // クラシックのステージ3（CHAOS）「以外」は取得時に次へ進める
+                // カオスステージは時間経過でのみ進むため、ここでは進めない
                 if (!(m_ruleMode == BattleRuleMode::CLASSIC && m_stageIndex == 2)) {
                     sp.currentIndex = (sp.currentIndex + 1) % sp.sequence.size();
                     sp.currentSymbol = sp.sequence[sp.currentIndex];
@@ -238,8 +258,11 @@ namespace App {
         m_totalTurns++;
         m_currentCycleTick++;
 
-        // 再出現タイミング判定（3または2ターンごと）
-        if (m_currentCycleTick >= m_spawnInterval) {
+        // 再出現タイミング判定
+        // カオスステージは2ターンごと（高速展開）、それ以外は3ターンごと
+        int currentInterval = (m_stageIndex == 2) ? 2 : m_spawnInterval;
+
+        if (m_currentCycleTick >= currentInterval) {
             m_currentCycleTick = 0;
 
             for (auto& sp : m_spawnPoints) {
@@ -248,9 +271,9 @@ namespace App {
                     sp.isAvailable = true;
                 }
 
-                // クラシックのステージ3のみ特殊処理:
-                // 取られていなくても定期的に記号が変化する
-                if (m_ruleMode == BattleRuleMode::CLASSIC && m_stageIndex == 2) {
+                // カオスステージ（ステージ3）のみ特殊処理:
+                // 取られていなくても定期的に記号が変化する（全盤面が流動的）
+                if (m_stageIndex == 2) {
                     sp.currentIndex = (sp.currentIndex + 1) % sp.sequence.size();
                     sp.currentSymbol = sp.sequence[sp.currentIndex];
                 }
@@ -338,8 +361,8 @@ namespace App {
 
                 // 次に出現する記号を予告表示
                 char nextOp = sp.currentSymbol;
-                if (m_ruleMode == BattleRuleMode::CLASSIC && m_stageIndex == 2) {
-                    // ステージ3は次の記号を表示
+                if (m_stageIndex == 2) {
+                    // カオスステージは次の記号を表示
                     nextOp = sp.sequence[(sp.currentIndex + 1) % sp.sequence.size()];
                 }
 
@@ -378,7 +401,6 @@ namespace App {
                 darkCol = GetColor(60, 10, 80);
             }
 
-            // --- 多層エフェクト描画 ---
 
             // ① オーラ（盤面に漏れるエネルギー）
             for (int i = 0; i < 2; ++i) {

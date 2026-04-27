@@ -73,7 +73,7 @@ namespace App {
             return false;
         }
 
-       
+
 
         // “ü—ÍŠÇ—ƒVƒXƒeƒ€‚Ì‰Šú‰»
         InputManager::GetInstance().Init();

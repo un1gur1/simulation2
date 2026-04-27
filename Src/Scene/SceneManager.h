@@ -80,6 +80,7 @@ namespace App {
         int GetGameMode() const { return gameMode_; }           // ゲームモード
         int GetZeroOneScore() const { return zeroOneScore_; }   // ゼロワン目標スコア
         int GetMaxStocks() const { return zeroOneScore_; }      // 最大残機数
+        void TogglePause(); // ポーズのON/OFFを切り替える
 
         // ==========================================
         // プレイヤー設定

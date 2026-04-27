@@ -4,6 +4,7 @@
 #include "ResultScene.h"
 #include "PauseMenu.h"
 #include "../Input/InputManager.h"
+#include "../Manager/ProceduralAudio.h"
 #include <utility>
 
 namespace App {
@@ -97,6 +98,15 @@ namespace App {
     void SceneManager::Init3D() {}
 
     // ==========================================
+    // どこからでも呼べるポーズ切り替えスイッチ
+    // ==========================================
+    void SceneManager::TogglePause() {
+        isPaused_ = !isPaused_;
+        ProceduralAudio::GetInstance().PlayPowerSE(9); // ポーズ効果音
+        if (isPaused_ && pauseMenu_) pauseMenu_->Init();
+    }
+
+    // ==========================================
     // 更新処理: シーン切り替えとポーズ管理
     // ==========================================
     void SceneManager::Update() {
@@ -104,34 +114,16 @@ namespace App {
         if (isChanging_) PerformSceneChange();
 
         // ==========================================
-        // ESCキーによるポーズトグル
-        // ==========================================
-      // ==========================================
-        // ESCキー ＆ マウスによるポーズトグル
+        // ESCキーによるポーズトグル（キーボードのみここで検知）
         // ==========================================
         static bool prevEsc = false;
         bool escHit = (CheckHitKey(KEY_INPUT_ESCAPE) == 1);
 
-        // GAMEシーン中のみ、右上(1740, 10)～(1900, 60)のクリックを検知
-        bool mouseHit = false;
-        if (sceneId_ == SCENE_ID::GAME) {
-            auto& input = InputManager::GetInstance();
-            if (input.IsMouseLeftTrg()) {
-                Vector2 m = input.GetMousePos();
-                if (m.x >= 1740 && m.x <= 1900 && m.y >= 10 && m.y <= 60) mouseHit = true;
-            }
+        // ESCキーが押された瞬間だけスイッチを入れる
+        if (escHit && !prevEsc) {
+            TogglePause();
         }
-
-        if (escHit || mouseHit) {
-            if (!prevEsc || mouseHit) {
-                isPaused_ = !isPaused_;
-                if (isPaused_ && pauseMenu_) pauseMenu_->Init();
-            }
-            prevEsc = escHit; // マウスクリック時はキー押しっぱなし防止のフラグを更新しない
-        }
-        else {
-            prevEsc = false;
-        }
+        prevEsc = escHit;
 
         // ==========================================
         // 状態に応じた更新処理
@@ -142,22 +134,25 @@ namespace App {
                 auto result = pauseMenu_->Update();
 
                 if (result == PauseMenu::Result::RESUME) {
-                    // 再開: ポーズ解除
-                    isPaused_ = false;
+                    // 再開: スイッチをもう一度押してポーズ解除
+                    TogglePause();
                 }
                 else if (result == PauseMenu::Result::TITLE) {
                     // タイトルへ戻る
                     isPaused_ = false;
+                    ProceduralAudio::GetInstance().PlayPowerSE(9);
                     ChangeScene(SCENE_ID::TITLE);
                 }
                 else if (result == PauseMenu::Result::EXIT) {
                     // ゲーム終了
+                    ProceduralAudio::GetInstance().PlayPowerSE(9);
                     isGameEnd_ = true;
                 }
             }
         }
         else {
             // 通常時: 現在のシーンを更新
+            // （この中でマウスクリックされたら、各シーンが TogglePause() を呼ぶ！）
             if (scene_) scene_->Update();
         }
     }

@@ -35,21 +35,21 @@ const int MELODY_LENGTH = sizeof(CYBER_BACH_HIGH) / sizeof(NoteData);
 
 
 // ==========================================
-// 🎹 初期化（全要素を盛り込んだ最強の音源生成）
+// 🎹 初期化
 // ==========================================
 void ProceduralAudio::Init() {
     static bool isInitialized = false;
     if (isInitialized) return;
     isInitialized = true;
 
-    // ★ 変更1：高音アルペジオ専用のエンベロープ（余韻を短くスパッと切る）
+    // 高音アルペジオ専用のエンベロープ
     ADSR bgmEnv = { 0.01, 0.1, 0.2, 0.3 };
 
     for (int i = 0; i < 128; ++i) m_bgmNotes[i] = -1;
 
-    // ★ 変更2：高音（79など）に対応するため、生成範囲を 100 まで広げる！
+    // 高音（79など）に対応するため、生成範囲を 100 まで広げる！
     for (int i = 40; i <= 100; ++i) {
-        // 0.35f を 0.1f くらいまで下げるとかなり落ち着きます
+
         m_bgmNotes[i] = GenerateWave(MidiToFreq(i), WaveType::SAWTOOTH, bgmEnv, 2.0, 0.1f);
     }
 
@@ -59,7 +59,7 @@ void ProceduralAudio::Init() {
     for (int n = 1; n <= 9; ++n) {
         m_powerNotes[n] = GenerateWave(freqs[n], WaveType::TRIANGLE, seEnv, 0.6, 0.5f);
     }
-    // ★ クリック音用：立ち上がりが一瞬で、余韻が全くない設定
+    // クリック音用：立ち上がりが一瞬で、余韻が全くない設定
     ADSR clickEnv = { 0.01, 0.05, 0.0, 0.0 };
 
     // 高めの音（880Hz=高いラ）で、矩形波(SQUARE)を使ってファミコン風の「ピッ」を作る
@@ -71,13 +71,13 @@ void ProceduralAudio::Init() {
 }
 
 // ==========================================
-// ⚙️ 究極の波形生成（SuperSaw + サブベース + ディレイ全部乗せ）
+// 波形生成（SuperSaw + サブベース + ディレイ）
 // ==========================================
 int ProceduralAudio::GenerateWave(double freq, WaveType type, ADSR env, double duration, float volume) {
     int sampleRate = 44100;
     int numSamples = (int)(sampleRate * duration);
 
-    // ★ ステレオWAVヘッダ錬成
+    // ステレオWAVヘッダ錬成
     int channels = 2;
     int blockAlign = channels * 2;
     int byteRate = sampleRate * blockAlign;
@@ -100,7 +100,7 @@ int ProceduralAudio::GenerateWave(double freq, WaveType type, ADSR env, double d
     memcpy(p, &dataSize, 4); p += 4;
     short* pcmData = (short*)p;
 
-    // 🌟 シンセサイザーの心臓部（5重ユニゾン設定）
+    // シンセサイザーの心臓部（5重ユニゾン設定）
     const int UNISON_VOICES = 5;
     double detune[UNISON_VOICES] = { 0.988, 0.994, 1.000, 1.006, 1.012 };
     double panL[UNISON_VOICES] = { 1.0,   0.7,   0.5,   0.3,   0.0 };
@@ -112,7 +112,7 @@ int ProceduralAudio::GenerateWave(double freq, WaveType type, ADSR env, double d
     double filterL0 = 0, filterL1 = 0;
     double filterR0 = 0, filterR1 = 0;
 
-    // 🌟 ピンポン・ディレイ（やまびこ）用のバッファ
+    // ピンポン・ディレイ（やまびこ）用のバッファ
     int delaySamples = (int)(sampleRate * 0.3); // 0.3秒遅れ
     std::vector<double> delayBufferL(numSamples, 0.0);
     std::vector<double> delayBufferR(numSamples, 0.0);
@@ -159,13 +159,13 @@ int ProceduralAudio::GenerateWave(double freq, WaveType type, ADSR env, double d
         waveL /= UNISON_VOICES;
         waveR /= UNISON_VOICES;
 
-        // 🌟 3. トランジェント・アタック（打撃音によるアタック強調）
+        // 3. トランジェント・アタック（打撃音によるアタック強調）
         double transient = 0.0;
         if (t < 0.015) {
             transient = getOsc(WaveType::NOISE, 0, t, 0) * (1.0 - (t / 0.015)) * 0.4;
         }
 
-        // 🌟 4. スクエア・サブベース（腹に響くファミコン低音）
+        // 4. スクエア・サブベース（腹に響くファミコン低音）
         double subBass = getOsc(WaveType::SQUARE, freq * 0.5, t, 0) * 0.25;
 
         // すべての音をミックス
@@ -182,7 +182,7 @@ int ProceduralAudio::GenerateWave(double freq, WaveType type, ADSR env, double d
         double outL = tanh(filterL1 * 1.5) * volume;
         double outR = tanh(filterR1 * 1.5) * volume;
 
-        // 🌟 7. ピンポン・ディレイ（左右に飛び交うやまびこ）
+        // 7. ピンポン・ディレイ（左右に飛び交うやまびこ）
         double delayL = (i >= delaySamples) ? delayBufferL[i - delaySamples] : 0.0;
         double delayR = (i >= delaySamples) ? delayBufferR[i - delaySamples] : 0.0;
 
@@ -212,7 +212,7 @@ double ProceduralAudio::MidiToFreq(int midi) {
 }
 
 // ==========================================
-// 🎧 再生インターフェース
+// 再生インターフェース
 // ==========================================
 void ProceduralAudio::PlayBGM(bool play) {
     m_isBgmPlaying = play;
@@ -228,7 +228,7 @@ void ProceduralAudio::PlayErrorSE() {
 }
 
 // ==========================================
-// ⏱️ シーケンサー（自動演奏の心臓部）
+// シーケンサー（自動演奏の心臓部）
 // ==========================================
 void ProceduralAudio::Update() {
     if (!m_isBgmPlaying) return;
@@ -240,7 +240,7 @@ void ProceduralAudio::Update() {
             PlaySoundMem(m_bgmNotes[note.midi], DX_PLAYTYPE_BACK);
         }
 
-        // 魔王の疾走感に合わせたBPM計算（ヘッダの m_tempoBPM が 150 前後を想定）
+		// 16分音符単位で次のノート時間を計算（トルコ行進曲は速いので16分音符で刻む）
         int msPer16th = 60000 / m_tempoBPM / 4;
         m_nextNoteTime = now + (note.length * msPer16th);
         m_bgmNoteIndex = (m_bgmNoteIndex + 1) % MELODY_LENGTH;

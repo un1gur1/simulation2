@@ -10,8 +10,8 @@ namespace App {
     // BattleRuleMode: バトルルールの種類
     // ==========================================
     enum class BattleRuleMode {
-        CLASSIC,    // クラシックモード（残機制バトル）
-        ZERO_ONE    // ゼロワンモード（スコア制バトル）
+        CLASSIC,    // ノーマルモード（残機制バトル）
+        ZERO_ONE    // カウントモード（スコア制バトル）
     };
 
     // ==========================================
@@ -114,8 +114,8 @@ namespace App {
         // 内部処理: 初期化
         // ==========================================
         void InitializeSpawnPoints();       // モードに応じた初期化
-        void InitializeClassicSpawns();     // クラシックモード用
-        void InitializeZeroOneSpawns();     // ゼロワンモード用
+        void InitializeClassicSpawns();     // ノーマルモード用
+        void InitializeZeroOneSpawns();     // カウントモード用
     };
 
 } // namespace App

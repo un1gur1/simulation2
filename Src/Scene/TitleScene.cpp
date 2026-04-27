@@ -60,6 +60,7 @@ namespace {
     inline unsigned int COL_BLACK() { return GetColor(0, 0, 0); }         // 黒
     inline unsigned int COL_TITLE_MAIN() { return GetColor(220, 245, 255); } // タイトルメイン（明るい青）
     inline unsigned int COL_TITLE_SUB() { return GetColor(0, 120, 255); }    // タイトルサブ（青）
+    inline unsigned int COL_DANGER() { return GetColor(255, 100, 100); }  // 警告・終了（赤）
 }
 
 namespace App {
@@ -112,20 +113,20 @@ namespace App {
         // ProceduralAudioの初期化
         ProceduralAudio::GetInstance().PlayBGM(true);
 
-        // フォント作成（日本語対応）
+        // フォント作成
         m_fontTitle = CreateFontToHandle("BIZ UD明朝 Medium", 100, 3, DX_FONTTYPE_ANTIALIASING);
         m_fontMenu = CreateFontToHandle("BIZ UDゴシック", 40, 2, DX_FONTTYPE_NORMAL);
         m_fontSmall = CreateFontToHandle("遊ゴシック", 24, 2, DX_FONTTYPE_NORMAL);
         m_fontNumber = CreateFontToHandle("HGP創英角ﾎﾟｯﾌﾟ体", 48, 2, DX_FONTTYPE_ANTIALIASING);
 
-        // 背景シェーダー読み込み（サイバーグリッドエフェクト）
+        // 背景シェーダー読み込み）
         m_psHandle = LoadPixelShaderFromMem(g_ps_CyberGrid, sizeof(g_ps_CyberGrid));
         m_cbHandle = CreateShaderConstantBuffer(sizeof(float) * 4);
         m_shaderTime = 0.0f;
     }
 
     // ==========================================
-    // リソース読み込み: 現在は非使用
+    // リソース読み込み: 
     // ==========================================
     void TitleScene::Load() {}
     void TitleScene::LoadEnd() {}
@@ -138,11 +139,6 @@ namespace App {
         auto& input = InputManager::GetInstance();
 
         ProceduralAudio::GetInstance().Update();
-        // ESCキーでゲーム終了
-        if (input.IsTrgDown(KEY_INPUT_ESCAPE)) {
-            m_shouldQuit = true;
-            return;
-        }
 
         ++m_frameCount;
         if (m_frameCount < WAIT_START_FRAMES) return;  // 初期待機
@@ -188,6 +184,22 @@ namespace App {
         int CY = sh / 2;  // 画面中央Y
         int menuStartY = CY + MENU_CENTER_OFFSET_Y;
 
+        // ==========================================
+        // 右上のEXITボタンのクリック判定
+        // ==========================================
+        int exitBtnW = 160;
+        int exitBtnH = 50;
+        int exitBtnX = sw - exitBtnW - 20;
+        int exitBtnY = 20;
+
+        if (HoverBox(exitBtnX, exitBtnY, exitBtnW, exitBtnH)) {
+            if (mouseMoved) ProceduralAudio::GetInstance().PlayPowerSE(2); // ホバー音
+            if (mClick) {
+                SceneManager::GetInstance()->TogglePause();
+                return;
+            }
+        }
+
         // カスタム設定画面かどうか
         bool isCustomState = (m_state == MenuState::CUSTOM_P1_START || m_state == MenuState::CUSTOM_P2_START);
         int menuCX = isCustomState ? CX + MENU_CUSTOM_OFFSET_X : CX;
@@ -208,7 +220,7 @@ namespace App {
         // --- [1] スタート画面 ---
         if (m_state == MenuState::PRESS_START) {
             if (spaceTrg || mClick) {
-                ProceduralAudio::GetInstance().PlayPowerSE(9); // ★ 決定音
+                ProceduralAudio::GetInstance().PlayPowerSE(9); //  決定音
                 m_state = MenuState::SELECT_PLAYERS;
                 m_frameCount = 0;
             }
@@ -219,23 +231,23 @@ namespace App {
                 if (HoverBox(menuCX - MENU_BOX_HALF_W, menuStartY + MENU_ITEM_BASE_Y + i * MENU_ITEM_STEP_Y - MENU_BOX_OFFSET_Y, MENU_BOX_HALF_W * 2, MENU_BOX_H)) {
                     if (mouseMoved && m_playerCursor != i + 1) {
                         m_playerCursor = i + 1;
-                        ProceduralAudio::GetInstance().PlayPowerSE(2); // ★ マウスホバー音
+                        ProceduralAudio::GetInstance().PlayPowerSE(2); // ウスホバー音
                     }
                     if (mClick) { m_playerCursor = i + 1; spaceTrg = true; }
                 }
             }
             if (upTrg || downTrg) {
                 m_playerCursor = (m_playerCursor == 1) ? 2 : 1;
-                ProceduralAudio::GetInstance().PlayPowerSE(2); // ★ キーボード移動音
+                ProceduralAudio::GetInstance().PlayPowerSE(2); // キーボード移動音
             }
 
             if (bTrg || isBackBtnClicked) {
-                ProceduralAudio::GetInstance().PlayErrorSE(); // ★ キャンセル音
+                ProceduralAudio::GetInstance().PlayErrorSE(); // キャンセル音
                 m_state = MenuState::PRESS_START;
                 m_frameCount = 0;
             }
             else if (spaceTrg) {
-                ProceduralAudio::GetInstance().PlayPowerSE(9); // ★ 決定音
+                ProceduralAudio::GetInstance().PlayPowerSE(9); // 決定音
                 m_players[1].typeCursor = (m_playerCursor == 1) ? 1 : 0;
                 m_state = MenuState::SELECT_MODE;
                 m_frameCount = 0;
@@ -437,7 +449,7 @@ namespace App {
 
             // 数値直接入力（1~9キー）
             if (hitNum != -1 && p.customCursor < 3) {
-                ProceduralAudio::GetInstance().PlayPowerSE(hitNum); // ★ 入力した数字の音程がそのまま鳴る！
+                ProceduralAudio::GetInstance().PlayPowerSE(hitNum); // 入力した数字の音程がそのまま鳴る！
                 if (p.customCursor == 0) p.startNum = hitNum;
                 else if (p.customCursor == 1) p.startX = hitNum;
                 else if (p.customCursor == 2) p.startY = hitNum;
@@ -451,13 +463,13 @@ namespace App {
             // 数値の増減（左右キー）
             if (p.customCursor < 3) {
                 if (rightTrg) {
-                    ProceduralAudio::GetInstance().PlayPowerSE(5); // ★ 値変更音
+                    ProceduralAudio::GetInstance().PlayPowerSE(5); // 値変更音
                     if (p.customCursor == 0) { p.startNum++; if (p.startNum > GRID_SIZE) p.startNum = 1; }
                     if (p.customCursor == 1) { p.startX++; if (p.startX > GRID_SIZE) p.startX = 1; }
                     if (p.customCursor == 2) { p.startY++; if (p.startY > GRID_SIZE) p.startY = 1; }
                 }
                 if (leftTrg) {
-                    ProceduralAudio::GetInstance().PlayPowerSE(5); // ★ 値変更音
+                    ProceduralAudio::GetInstance().PlayPowerSE(5); // 値変更音
                     if (p.customCursor == 0) { p.startNum--; if (p.startNum < 1) p.startNum = GRID_SIZE; }
                     if (p.customCursor == 1) { p.startX--; if (p.startX < 1) p.startX = GRID_SIZE; }
                     if (p.customCursor == 2) { p.startY--; if (p.startY < 1) p.startY = GRID_SIZE; }
@@ -466,7 +478,7 @@ namespace App {
 
             // 戻る処理
             if (bTrg || isBackBtnClicked) {
-                ProceduralAudio::GetInstance().PlayErrorSE(); // ★ キャンセル音
+                ProceduralAudio::GetInstance().PlayErrorSE(); // キャンセル音
                 if (p.customCursor > 0) p.customCursor--;  // カーソルを1つ戻す
                 else if (is1P) {
                     m_state = MenuState::SELECT_STAGE;
@@ -481,7 +493,7 @@ namespace App {
 
             // 決定処理
             if (spaceTrg) {
-                ProceduralAudio::GetInstance().PlayPowerSE(9); // ★ 決定音
+                ProceduralAudio::GetInstance().PlayPowerSE(9); // 決定音
                 if (p.customCursor < 3) {
                     p.customCursor++;  // 次の項目へ
                 }
@@ -713,7 +725,7 @@ namespace App {
 
         // [1] スタート画面: 点滅するプロンプト
         if (m_state == MenuState::PRESS_START) {
-            const char* pushText = "- PRESS SPACE OR CLICK TO START -";
+            const char* pushText = "スペースかクリックでスタート";
             int ptW = GetDrawStringWidthToHandle(pushText, (int)strlen(pushText), m_fontMenu);
 
             SetDrawBlendMode(DX_BLENDMODE_ALPHA, blinkAlpha);
@@ -727,6 +739,34 @@ namespace App {
         // [3] ゲームモード選択
         else if (m_state == MenuState::SELECT_MODE) {
             drawSimpleMenu(m_modeCursor, "【 プレイモード 】", "ノーマルバトル", "カウントバトル");
+
+            // モード説明文の描画
+            const char* modeDesc = nullptr;
+            if (m_modeCursor == 0) {
+                modeDesc = "相手のバッテリーを削り切れ！四則演算を用いた王道ダメージバトル";
+            }
+            else {
+                modeDesc = "目標スコアへピタリと着地しろ！極限の頭脳戦モード";
+            }
+
+            if (modeDesc != nullptr) {
+                int descW = GetDrawStringWidthToHandle(modeDesc, (int)strlen(modeDesc), m_fontSmall);
+                int descX = menuCX - descW / 2;
+                int descY = menuStartY + MENU_ITEM_BASE_Y + 2 * MENU_ITEM_STEP_Y + 40;
+
+                // 説明文の背景
+                SetDrawBlendMode(DX_BLENDMODE_ALPHA, 180);
+                DrawBox(descX - 20, descY - 10, descX + descW + 20, descY + 40,
+                    COL_BG(), TRUE);
+                SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+
+                // 説明文の枠線
+                DrawBox(descX - 20, descY - 10, descX + descW + 20, descY + 40,
+                    m_modeCursor == 0 ? COL_P1() : COL_P2(), FALSE);
+
+                // 説明文テキスト
+                DrawStringToHandle(descX, descY, modeDesc, COL_TEXT_ON(), m_fontSmall);
+            }
         }
         // [4a] 残機設定
         else if (m_state == MenuState::SELECT_CLASSIC_STOCKS) {
@@ -747,6 +787,45 @@ namespace App {
         // [7] ステージ選択
         else if (m_state == MenuState::SELECT_STAGE) {
             drawSimpleMenu(m_stageCursor, "【 ステージ選択 】", "バランステージ", "マイナステージ", "カオステージ");
+
+            // ==========================================
+            // おすすめ情報の表示
+            // ==========================================
+            const char* recommendText = nullptr;
+            unsigned int recommendCol = COL_TEXT_OFF();
+
+            // ノーマルバトルの場合
+            if (m_modeCursor == 0) {
+                if (m_stageCursor == 1) {
+                    // マイナステージが選択されている場合
+                    recommendText = "おすすめ！";
+                    recommendCol = GetColor(255, 215, 0); // ゴールド
+                }
+                else {
+                    // それ以外のステージの場合はヒント表示
+                    recommendText = "（マイナステージがおすすめ）";
+                    recommendCol = GetColor(150, 150, 180);
+                }
+            }
+            // カウントバトルの場合
+            else {
+                recommendText = "すべておすすめ！";
+                recommendCol = GetColor(100, 255, 150); // 明るい緑
+            }
+
+            // おすすめテキストを描画（メニューの右側）
+            if (recommendText != nullptr) {
+                int recW = GetDrawStringWidthToHandle(recommendText, (int)strlen(recommendText), m_fontSmall);
+                int recX = menuCX + 420;
+                int recY = menuStartY + 50;
+
+                // 選択中のステージに合わせておすすめマークを移動（ノーマルバトル時のみ）
+                if (m_modeCursor == 0 && m_stageCursor == 1) {
+                    recY = menuStartY + MENU_ITEM_BASE_Y + m_stageCursor * MENU_ITEM_STEP_Y + 15;
+                }
+
+                DrawStringToHandle(recX, recY, recommendText, recommendCol, m_fontSmall);
+            }
         }
         // [8] カスタム設定画面
         else if (isCustomState) {
@@ -892,6 +971,8 @@ namespace App {
             const char* backStr = "戻る (B)";
             int bw = GetDrawStringWidthToHandle(backStr, (int)strlen(backStr), m_fontMenu);
             DrawStringToHandle(backBtnX + (backBtnW - bw) / 2, backBtnY + 10, backStr, btnCol, m_fontMenu);
+
+
         }
 
         // ==========================================
@@ -919,6 +1000,35 @@ namespace App {
             int guideX = isCustomState ? (CX - gw / 2 - 100) : (CX - gw / 2);
             DrawStringToHandle(guideX, sh - 55, guideText.c_str(), COL_TEXT_OFF(), m_fontSmall);
         }
+
+        // ==========================================
+        // 7. 右上のEXIT（終了）ボタン
+        // ==========================================
+        int exitBtnW = 160;
+        int exitBtnH = 50;
+        int exitBtnX = sw - exitBtnW - 20;
+        int exitBtnY = 20;
+        bool isExitHover = HoverBox(exitBtnX, exitBtnY, exitBtnW, exitBtnH);
+        unsigned int exitCol = isExitHover ? COL_DANGER() : COL_TEXT_OFF();
+
+        SetDrawBlendMode(DX_BLENDMODE_ALPHA, isExitHover ? 200 : 120);
+        DrawBox(exitBtnX, exitBtnY, exitBtnX + exitBtnW, exitBtnY + exitBtnH, COL_BG(), TRUE);
+        SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+
+        DrawBox(exitBtnX, exitBtnY, exitBtnX + exitBtnW, exitBtnY + exitBtnH, exitCol, FALSE);
+
+        const char* exitStr = "ポーズ (ESC)";
+        int twExit = GetDrawStringWidthToHandle(exitStr, (int)strlen(exitStr), m_fontSmall);
+        DrawStringToHandle(exitBtnX + (exitBtnW - twExit) / 2, exitBtnY + 12, exitStr, exitCol, m_fontSmall);
+
+        // ==========================================
+        // 8. 全画面切り替えの案内（画面右下）
+        // ==========================================
+        const char* fullscreenGuide = "[F11] 全画面表示 / ウィンドウ切替";
+        int fsGuideW = GetDrawStringWidthToHandle(fullscreenGuide, (int)strlen(fullscreenGuide), m_fontSmall);
+
+        // ガイドテキストの右端に少し余白（20px）を持たせて描画
+        DrawStringToHandle(sw - fsGuideW - 20, sh - 55, fullscreenGuide, GetColor(150, 150, 180), m_fontSmall);
     }
 
     // ==========================================

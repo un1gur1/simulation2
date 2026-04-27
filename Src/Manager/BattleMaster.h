@@ -165,6 +165,8 @@ namespace App {
         int m_maxTurns;
         bool m_isPaused;
         PauseMenu m_pauseMenu;
+
+        int m_logScrollOffset = 0; // ログのスクロール位置
         // ==========================================
         // 内部処理メソッド: 入力処理
         // ==========================================

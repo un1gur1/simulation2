@@ -94,7 +94,8 @@ namespace App {
 		// 4. 演算子バッジ: 取得中のアイテム表示
 		// ==========================================
 		char currentOp = GetOp();
-		if (currentOp != '\0') {  // 演算子を持っている場合のみ描画
+		if (currentOp != '\0') { 
+			// 演算子を持っている場合のみ描画
 			// バッジの配置（右下）
 			float bx = x + 20.0f;
 			float by = unitY + 18.0f;
