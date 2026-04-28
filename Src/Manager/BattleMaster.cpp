@@ -1651,6 +1651,10 @@ namespace App {
         unsigned int calcBorderCol = Is1PTurn() ? COL_P1() : COL_P2();
         DrawLine(600, BOTTOM_PANEL_Y, 1320, BOTTOM_PANEL_Y, calcBorderCol, 2);
 
+
+        // ==========================================
+         // 下部パネルの計算式・プレビュー描画
+         // ==========================================
         if (showCalcPanel) {
             if (isPreviewMode) {
                 if (willGetNewOp) DrawFormatStringToHandle(610, BOTTOM_PANEL_Y + 10, GetColor(255, 200, 100), f20, "→ 移動（演算子 [%c] を取得してバトル）", disp_aOp);
@@ -1658,9 +1662,34 @@ namespace App {
             }
 
             int f64 = GetCachedFont(64);
+            int f16 = GetCachedFont(16);
+
+            // 左辺と右辺の「誰の数字か」ラベルを決定
+            std::string leftLabel, rightLabel;
+            unsigned int leftCol = COL_TEXT_SUB(), rightCol = COL_TEXT_SUB();
+
+            if (disp_aOp == '/') {
+                leftLabel = "X座標";  leftCol = COL_INFO();
+                rightLabel = "Y座標"; rightCol = COL_INFO();
+            }
+            else {
+                // 常に左が「自分（行動者）」、右が「相手（ターゲット）」
+                leftLabel = "自分";
+                leftCol = Is1PTurn() ? COL_P1() : COL_P2();
+
+                rightLabel = "相手";
+                rightCol = Is1PTurn() ? COL_P2() : COL_P1();
+            }
 
             if (m_ruleMode == RuleMode::ZERO_ONE) {
                 int calcY = isPreviewMode ? BOTTOM_PANEL_Y + 27 : BOTTOM_PANEL_Y + 17;
+
+                //プレビューモード「以外」の時（決定後）だけラベルを描画する
+                if (!isPreviewMode) {
+                    DrawStringToHandle(672, calcY - 18, leftLabel.c_str(), leftCol, f16);
+                    DrawStringToHandle(760, calcY - 18, rightLabel.c_str(), rightCol, f16);
+                }
+
                 DrawFormatStringToHandle(672, calcY, COL_TEXT_DARK(), f64, "%d %c %d =", disp_aNum, disp_aOp, disp_tNum);
                 DrawFormatStringToHandle(670, calcY - 2, COL_TEXT_MAIN(), f64, "%d %c %d =", disp_aNum, disp_aOp, disp_tNum);
 
@@ -1716,15 +1745,21 @@ namespace App {
                     }
                 }
             }
-            else {
+            else { // ノーマルバトル
                 int calcY = isPreviewMode ? BOTTOM_PANEL_Y + 27 : BOTTOM_PANEL_Y + 17;
+
+                //プレビューモード「以外」の時（決定後）だけラベルを描画する
+                if (!isPreviewMode) {
+                    DrawStringToHandle(672, calcY - 18, leftLabel.c_str(), leftCol, f16);
+                    DrawStringToHandle(760, calcY - 18, rightLabel.c_str(), rightCol, f16);
+                }
+
                 DrawFormatStringToHandle(672, calcY, COL_TEXT_DARK(), f64, "%d %c %d =>", disp_aNum, disp_aOp, disp_tNum);
                 DrawFormatStringToHandle(670, calcY - 2, COL_TEXT_MAIN(), f64, "%d %c %d =>", disp_aNum, disp_aOp, disp_tNum);
 
                 unsigned int resColor = (intRes < 0) ? COL_DANGER() : (!isCleanDivide ? COL_DISABLE() : COL_SAFE());
                 DrawFormatStringToHandle(1032, calcY, COL_TEXT_DARK(), f64, "%s%d", (intRes > 0 ? "+" : ""), intRes);
                 DrawFormatStringToHandle(1030, calcY - 2, resColor, f64, "%s%d", (intRes > 0 ? "+" : ""), intRes);
-
                 if (isPreviewMode) {
                     if (disp_aOp == '/' && !isCleanDivide) {
                         DrawStringToHandle(650, BOTTOM_PANEL_Y + 85, "【自分に反映】", COL_SAFE(), f22);
