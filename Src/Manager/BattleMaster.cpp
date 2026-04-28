@@ -218,7 +218,7 @@ namespace App {
         }
 
         // ==========================================
-          // プレイヤー移動時のログ出力（HandleMoveInput内）
+          // プレイヤー移動時のログ出力(HandleMoveInput内)
           // ==========================================
         ProceduralAudio::GetInstance().PlayPowerSE(5);
         activeUnit.AddNumber(-cost);
@@ -845,7 +845,7 @@ namespace App {
         }
 
         // ==========================================
-         // 計算式のログ出力（ExecuteBattle内）
+         // 計算式のログ出力(ExecuteBattle内)
          // ==========================================
         std::string aName = (&attacker == m_player.get()) ? "1P" : "2P";
 
@@ -1257,7 +1257,7 @@ namespace App {
             }
         }
 
-        // ② 計算実行（ホバー時）によるプレビュー
+        // ② 計算実行(ホバー時)によるプレビュー
         if (showCalcPanel && (isHoverSelf || isHoverEnemy)) {
             bool applyTo1P = (isHoverSelf && activeActor == m_player.get()) || (!isHoverSelf && activeTarget == m_player.get());
 
@@ -1301,7 +1301,7 @@ namespace App {
             }
         }
 
-        // ワープ設置の描画（背景サークル）
+        // ワープ設置の描画(背景サークル)
         char currentPreviewOp = (showCalcPanel && disp_aOp == '/') ? '/' : '\0';
         if (currentPreviewOp == '/') {
             int wx = disp_aNum - 1;
@@ -1604,7 +1604,7 @@ namespace App {
 
 
         // ==========================================
-         // ログパネル描画（スクロール＆スクロールバー対応）
+         // ログパネル描画(スクロール＆スクロールバー対応)
          // ==========================================
         int f22 = GetCachedFont(22);
         int f20 = GetCachedFont(20);
@@ -1651,18 +1651,19 @@ namespace App {
         unsigned int calcBorderCol = Is1PTurn() ? COL_P1() : COL_P2();
         DrawLine(600, BOTTOM_PANEL_Y, 1320, BOTTOM_PANEL_Y, calcBorderCol, 2);
 
-
         // ==========================================
-         // 下部パネルの計算式・プレビュー描画
-         // ==========================================
+        // 下部パネルの計算式・プレビュー描画
+        // ==========================================
         if (showCalcPanel) {
-            if (isPreviewMode) {
-                if (willGetNewOp) DrawFormatStringToHandle(610, BOTTOM_PANEL_Y + 10, GetColor(255, 200, 100), f20, "→ 移動（演算子 [%c] を取得してバトル）", disp_aOp);
-                else DrawStringToHandle(610, BOTTOM_PANEL_Y + 10, "→ 移動（バトル可能）", GetColor(255, 200, 100), f20);
-            }
-
             int f64 = GetCachedFont(64);
             int f16 = GetCachedFont(16);
+            int f20 = GetCachedFont(20);
+
+            if (isPreviewMode) {
+                int preY = BOTTOM_PANEL_Y - 26; // パネル枠線の少し上に描画
+                if (willGetNewOp) DrawFormatStringToHandle(600, preY, GetColor(255, 200, 100), f20, "▼ 移動プレビュー(演算子 [%c] を取得してバトル)", disp_aOp);
+                else DrawStringToHandle(600, preY, "▼ 移動プレビュー(バトル発生)", GetColor(255, 200, 100), f20);
+            }
 
             // 左辺と右辺の「誰の数字か」ラベルを決定
             std::string leftLabel, rightLabel;
@@ -1673,7 +1674,7 @@ namespace App {
                 rightLabel = "Y座標"; rightCol = COL_INFO();
             }
             else {
-                // 常に左が「自分（行動者）」、右が「相手（ターゲット）」
+                // 常に左が「自分(行動者)」、右が「相手(ターゲット)」
                 leftLabel = "自分";
                 leftCol = Is1PTurn() ? COL_P1() : COL_P2();
 
@@ -1681,14 +1682,11 @@ namespace App {
                 rightCol = Is1PTurn() ? COL_P2() : COL_P1();
             }
 
-            if (m_ruleMode == RuleMode::ZERO_ONE) {
-                int calcY = isPreviewMode ? BOTTOM_PANEL_Y + 27 : BOTTOM_PANEL_Y + 17;
+            int calcY = BOTTOM_PANEL_Y + 22;
 
-                //プレビューモード「以外」の時（決定後）だけラベルを描画する
-                if (!isPreviewMode) {
-                    DrawStringToHandle(672, calcY - 18, leftLabel.c_str(), leftCol, f16);
-                    DrawStringToHandle(760, calcY - 18, rightLabel.c_str(), rightCol, f16);
-                }
+            if (m_ruleMode == RuleMode::ZERO_ONE) {
+                DrawStringToHandle(672, calcY - 18, leftLabel.c_str(), leftCol, f16);
+                DrawStringToHandle(760, calcY - 18, rightLabel.c_str(), rightCol, f16);
 
                 DrawFormatStringToHandle(672, calcY, COL_TEXT_DARK(), f64, "%d %c %d =", disp_aNum, disp_aOp, disp_tNum);
                 DrawFormatStringToHandle(670, calcY - 2, COL_TEXT_MAIN(), f64, "%d %c %d =", disp_aNum, disp_aOp, disp_tNum);
@@ -1746,13 +1744,10 @@ namespace App {
                 }
             }
             else { // ノーマルバトル
-                int calcY = isPreviewMode ? BOTTOM_PANEL_Y + 27 : BOTTOM_PANEL_Y + 17;
+                int calcY = BOTTOM_PANEL_Y + 22;
 
-                //プレビューモード「以外」の時（決定後）だけラベルを描画する
-                if (!isPreviewMode) {
-                    DrawStringToHandle(672, calcY - 18, leftLabel.c_str(), leftCol, f16);
-                    DrawStringToHandle(760, calcY - 18, rightLabel.c_str(), rightCol, f16);
-                }
+                DrawStringToHandle(672, calcY - 18, leftLabel.c_str(), leftCol, f16);
+                DrawStringToHandle(760, calcY - 18, rightLabel.c_str(), rightCol, f16);
 
                 DrawFormatStringToHandle(672, calcY, COL_TEXT_DARK(), f64, "%d %c %d =>", disp_aNum, disp_aOp, disp_tNum);
                 DrawFormatStringToHandle(670, calcY - 2, COL_TEXT_MAIN(), f64, "%d %c %d =>", disp_aNum, disp_aOp, disp_tNum);
@@ -1760,6 +1755,9 @@ namespace App {
                 unsigned int resColor = (intRes < 0) ? COL_DANGER() : (!isCleanDivide ? COL_DISABLE() : COL_SAFE());
                 DrawFormatStringToHandle(1032, calcY, COL_TEXT_DARK(), f64, "%s%d", (intRes > 0 ? "+" : ""), intRes);
                 DrawFormatStringToHandle(1030, calcY - 2, resColor, f64, "%s%d", (intRes > 0 ? "+" : ""), intRes);
+       
+
+                
                 if (isPreviewMode) {
                     if (disp_aOp == '/' && !isCleanDivide) {
                         DrawStringToHandle(650, BOTTOM_PANEL_Y + 85, "【自分に反映】", COL_SAFE(), f22);
@@ -1866,7 +1864,7 @@ namespace App {
             }
         }
         // ==========================================
-        // 右上の PAUSE（ポーズ）ボタン描画
+        // 右上の PAUSE(ポーズ)ボタン描画
         // ==========================================
         int pauseBtnW = 160;
         int pauseBtnH = 50;
@@ -1875,7 +1873,7 @@ namespace App {
         bool isPauseHover = CheckButtonClick(pauseBtnX, pauseBtnY, pauseBtnW, pauseBtnH, mousePos);
         unsigned int pauseCol = isPauseHover ? COL_WARN() : COL_TEXT_OFF();
 
-        // 背景（半透明）
+        // 背景(半透明)
         SetDrawBlendMode(DX_BLENDMODE_ALPHA, isPauseHover ? 200 : 120);
         DrawBox(pauseBtnX, pauseBtnY, pauseBtnX + pauseBtnW, pauseBtnY + pauseBtnH, COL_BG(), TRUE);
         SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
