@@ -55,7 +55,7 @@ namespace App {
     void ResultScene::Update() {
         ++m_frameCount;
 
-        // 最初の1秒間はスキップ不可（演出時間確保）
+        // 最初の1秒間はスキップ不可(演出時間確保)
         if (m_frameCount > 60) {
             // Space、Enter、マウスクリックでタイトルへ
             if (CheckHitKey(KEY_INPUT_SPACE) ||
@@ -73,7 +73,7 @@ namespace App {
         int sw = 1920, sh = 1080;  // 画面サイズ
 
         // ==========================================
-        // 1. テーマカラー設定（勝敗で色を切り替え）
+        // 1. テーマカラー設定(勝敗で色を切り替え)
         // ==========================================
         unsigned int themeColMain = m_isWin
             ? GetColor(255, 165, 0)    // 勝利: オレンジ
@@ -88,14 +88,14 @@ namespace App {
             : GetColor(0, 10, 30);      // 敗北: 暗い青
 
         // ==========================================
-        // 2. 背景シェーダー描画（サイバーグリッドエフェクト）
+        // 2. 背景シェーダー描画(サイバーグリッドエフェクト)
         // ==========================================
         DrawBox(0, 0, sw, sh, bgDarkCol, TRUE);
 
         if (m_psHandle != -1 && m_cbHandle != -1) {
             // シェーダーパラメータ設定
             float* cb = (float*)GetBufferShaderConstantBuffer(m_cbHandle);
-            cb[0] = m_frameCount * 0.015f;  // 時間（アニメーション用）
+            cb[0] = m_frameCount * 0.015f;  // 時間(アニメーション用)
             cb[1] = (float)sw;               // 画面幅
             cb[2] = (float)sh;               // 画面高さ
             cb[3] = 0.0f;                    // 予備
@@ -105,7 +105,7 @@ namespace App {
             // シェーダー適用
             SetUsePixelShader(m_psHandle);
 
-            // 頂点データ作成（画面全体を覆う2つの三角形）
+            // 頂点データ作成(画面全体を覆う2つの三角形)
             VERTEX2DSHADER v[6];
             for (int i = 0; i < 6; ++i) {
                 v[i].pos = VGet(0, 0, 0);
@@ -119,7 +119,7 @@ namespace App {
                 v[i].spc = GetColorU8(0, 0, 0, 0);
             }
 
-            // UV座標設定（テクスチャマッピング用）
+            // UV座標設定(テクスチャマッピング用)
             v[0].pos.x = 0;  v[0].pos.y = 0;  v[0].u = 0.0f; v[0].v = 0.0f;
             v[1].pos.x = sw; v[1].pos.y = 0;  v[1].u = 1.0f; v[1].v = 0.0f;
             v[2].pos.x = 0;  v[2].pos.y = sh; v[2].u = 0.0f; v[2].v = 1.0f;
@@ -131,13 +131,13 @@ namespace App {
             SetUsePixelShader(-1);
         }
 
-        // 半透明オーバーレイ（シェーダーエフェクトを抑える）
+        // 半透明オーバーレイ(シェーダーエフェクトを抑える)
         SetDrawBlendMode(DX_BLENDMODE_ALPHA, 180);
         DrawBox(0, 0, sw, sh, bgDarkCol, TRUE);
         SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
 
         // ==========================================
-        // 3. タイトルロゴ（勝利 or 敗北）
+        // 3. タイトルロゴ(勝利 or 敗北)
         // ==========================================
         const char* resultMain = m_isWin ? "勝利" : "敗北";
         SetFontSize(100);
@@ -145,32 +145,32 @@ namespace App {
         DrawString(sw / 2 - textW / 2, 120, resultMain, GetColor(255, 255, 255));
 
         // ==========================================
-        // 4. 戦績パネル（スコアボード）
+        // 4. 戦績パネル(スコアボード)
         // ==========================================
         int panelX = sw / 2 - 400;
         int panelY = 300;
 
-        // パネル背景（半透明の暗い矩形）
+        // パネル背景(半透明の暗い矩形)
         SetDrawBlendMode(DX_BLENDMODE_ALPHA, 200);
         DrawBox(panelX, panelY, panelX + 800, panelY + 450, GetColor(10, 10, 15), TRUE);
         SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
 
-        // パネル枠線（テーマカラー）
+        // パネル枠線(テーマカラー)
         DrawBox(panelX, panelY, panelX + 800, panelY + 450, themeColMain, FALSE);
 
         // ==========================================
         // 5. 戦績項目の描画
         // ==========================================
 
-        // 描画ヘルパー関数（ラムダ式）
+        // 描画ヘルパー関数(ラムダ式)
         auto drawStat = [&](int yOffset, const char* label, const std::string& value, bool isHighlight = false) {
             SetFontSize(40);
             unsigned int color = isHighlight ? themeColMain : GetColor(200, 200, 200);
 
-            // ラベル（左寄せ）
+            // ラベル(左寄せ)
             DrawString(panelX + 80, panelY + yOffset, label, color);
 
-            // 値（右寄せ）
+            // 値(右寄せ)
             int valW = GetDrawStringWidth(value.c_str(), (int)value.length());
             DrawString(panelX + 720 - valW, panelY + yOffset, value.c_str(), GetColor(255, 255, 255));
 
@@ -178,7 +178,7 @@ namespace App {
             DrawLine(panelX + 60, panelY + yOffset + 50, panelX + 740, panelY + yOffset + 50, GetColor(50, 50, 60), 1);
             };
 
-        // クリアタイム計算（ミリ秒 → MM:SS形式）
+        // クリアタイム計算(ミリ秒 → MM:SS形式)
         int totalSec = m_stats.playTimeFrames / 1000;
         char timeStr[64];
         sprintf_s(timeStr, "%02d : %02d", totalSec / 60, totalSec % 60);
@@ -191,10 +191,10 @@ namespace App {
         drawStat(360, "最大ダメージ / スコア", std::to_string(m_stats.maxDamage), true);  // ハイライト表示
 
         // ==========================================
-        // 6. 操作ガイド（点滅演出）
+        // 6. 操作ガイド(点滅演出)
         // ==========================================
         if (m_frameCount > 90) {  // 1.5秒後から表示
-            // サイン波で透明度を変化させる（点滅効果）
+            // サイン波で透明度を変化させる(点滅効果)
             int pulseAlpha = 100 + (int)(std::sin(m_frameCount / 15.0f) * 100);
             SetDrawBlendMode(DX_BLENDMODE_ALPHA, pulseAlpha);
 

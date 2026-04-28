@@ -128,7 +128,7 @@ namespace App {
         DrawOperatorIcon(sw / 2, 220, 60, GetColor(0, 255, 255));
 
         SetFontSize(80);
-        DrawString(sw / 2 - 280, 300, "SYSTEM PAUSED", GetColor(200, 240, 255));
+        DrawString(sw / 2 - 280, 300, "ポーズ", GetColor(200, 240, 255));
 
         // ==========================================
         // 3. メニュー項目: 3つの選択肢
