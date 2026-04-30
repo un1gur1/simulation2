@@ -11,7 +11,7 @@
 #include "../Scene/PauseMenu.h"
 
 namespace App {
-
+    class BattleUI;
     // ==========================================
     // Fraction: 分数計算用の構造体
     // 用途: 四則演算の結果を正確に保持（小数誤差なし）
@@ -57,6 +57,8 @@ namespace App {
     // 用途: ターン制バトルのフロー制御、AI思考、勝敗判定
     // ==========================================
     class BattleMaster {
+
+        friend class BattleUI;
     public:
         // ==========================================
         // 列挙型定義
@@ -95,6 +97,8 @@ namespace App {
 
         bool IsGameOver() const;        // ゲーム終了判定
         bool IsPlayerWin() const;       // プレイヤー勝利判定
+        const MapGrid& GetMapGrid() const { return m_mapGrid; }
+        MapGrid& GetMapGrid() { return m_mapGrid; }
 
     private:
         // ==========================================
@@ -109,7 +113,7 @@ namespace App {
         GameMode m_gameMode;            // ゲームモード
         RuleMode m_ruleMode;            // ルールモード
         MapGrid  m_mapGrid;             // マップ情報
-
+        std::unique_ptr<BattleUI> m_ui;
         std::unique_ptr<Player> m_player;  // 1Pユニット
         std::unique_ptr<Enemy>  m_enemy;   // 2Pユニット
 

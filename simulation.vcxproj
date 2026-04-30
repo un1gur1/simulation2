@@ -184,6 +184,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Src\Battle\BattleUI.cpp" />
+    <ClCompile Include="Src\Utility\AppConfig.cpp" />
     <ClCompile Include="Src\Application.cpp" />
     <ClCompile Include="Src\Common\Vector2.cpp" />
     <ClCompile Include="Src\Input\InputManager.cpp" />
@@ -204,6 +206,8 @@
     <ClCompile Include="Src\Scene\TitleScene.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Src\Battle\BattleUI.h" />
+    <ClInclude Include="Src\Utility\AppConfig.h" />
     <ClInclude Include="Src\Application.h" />
     <ClInclude Include="Src\Common\Vector2.h" />
     <ClInclude Include="Src\Input\InputManager.h" />

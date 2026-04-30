@@ -31,6 +31,12 @@
     <Filter Include="Src\Object\Unit\Map">
       <UniqueIdentifier>{b8c3266a-f422-464f-a64f-1912eff586b8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Src\Utility">
+      <UniqueIdentifier>{d883106c-a74d-4f97-9c48-97534cdeab19}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Src\Battle">
+      <UniqueIdentifier>{68c51f47-68d1-4f06-9a3e-f4ce37e9ed3d}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Src\Application.cpp">
@@ -87,6 +93,8 @@
     <ClCompile Include="Src\Manager\ProceduralAudio.cpp">
       <Filter>Src\Manager</Filter>
     </ClCompile>
+    <ClCompile Include="Src\Utility\AppConfig.cpp" />
+    <ClCompile Include="Src\Battle\BattleUI.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Src\Application.h">
@@ -140,6 +148,8 @@
     <ClInclude Include="Src\Manager\ProceduralAudio.h">
       <Filter>Src\Manager</Filter>
     </ClInclude>
+    <ClInclude Include="Src\Utility\AppConfig.h" />
+    <ClInclude Include="Src\Battle\BattleUI.h" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Src\PixelShader.hlsl">
